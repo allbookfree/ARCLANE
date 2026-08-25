@@ -1,0 +1,29 @@
+.firecrawl-credit-panel { margin-top: 10px; overflow: hidden; border: 1px solid #dce2e9; border-radius: 15px; background: #fff; box-shadow: 0 10px 30px rgba(10,20,40,.04); }
+.firecrawl-credit-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 17px 20px; border-bottom: 1px solid #e5e8ed; background: linear-gradient(135deg,#fff8f5,#fff); }
+.firecrawl-credit-panel > header p, .firecrawl-credit-panel > header h3 { margin: 0; }
+.firecrawl-credit-panel > header p { color: #d74725; font-size: 9px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.firecrawl-credit-panel > header h3 { margin-top: 5px; color: #0a1428; font-size: 18px; letter-spacing: -.025em; }
+.firecrawl-credit-panel > header button { min-height: 38px; padding: 0 13px; border: 1px solid #f1b5a6; border-radius: 9px; background: #fff; color: #bd3c1f; font-size: 12px; font-weight: 850; cursor: pointer; }
+.firecrawl-credit-panel > header button:hover:not(:disabled) { border-color: #ed542f; background: #ed542f; color: #fff; }
+.firecrawl-credit-panel > header button:disabled { opacity: .6; cursor: wait; }
+.firecrawl-credit-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); }
+.firecrawl-credit-metrics > div { min-width: 0; min-height: 84px; display: flex; flex-direction: column; justify-content: center; padding: 15px 20px; border-left: 1px solid #e8ebef; }
+.firecrawl-credit-metrics > div:first-child { border-left: 0; }
+.firecrawl-credit-metrics span { color: #848d99; font-size: 10px; font-weight: 750; }
+.firecrawl-credit-metrics strong { overflow: hidden; margin-top: 6px; color: #172238; font-family: Georgia,serif; font-size: 21px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.firecrawl-credit-metrics > div:last-child strong { font-family: inherit; font-size: 12px; font-weight: 800; }
+.firecrawl-credit-track { height: 8px; margin: 0 20px; overflow: hidden; border-radius: 999px; background: #edf0f4; }
+.firecrawl-credit-track i { height: 100%; display: block; border-radius: inherit; background: linear-gradient(90deg,#ef4f2b,#ff8b4b); transition: width 250ms ease; }
+.firecrawl-credit-panel > footer { display: flex; align-items: center; gap: 8px; padding: 13px 20px 16px; }
+.firecrawl-credit-panel > footer span { padding: 5px 8px; border-radius: 999px; background: #f3f5f8; color: #697482; font-size: 9px; }
+.firecrawl-credit-panel > footer strong { margin-left: auto; color: #9299a4; font-size: 9px; }
+.firecrawl-credit-empty { margin: 0; padding: 19px 20px; color: #697482; font-size: 12px; line-height: 1.55; }
+.research-tool-save:disabled, .research-tool-key-field input:disabled, .research-tool-key-field button:disabled, .research-tool-dialog > header > button:disabled { opacity: .62; cursor: wait; }
+
+@media (max-width: 720px) {
+  .firecrawl-credit-metrics { grid-template-columns: 1fr; }
+  .firecrawl-credit-metrics > div { min-height: 68px; border-top: 1px solid #e8ebef; border-left: 0; }
+  .firecrawl-credit-metrics > div:first-child { border-top: 0; }
+  .firecrawl-credit-panel > footer { align-items: flex-start; flex-direction: column; }
+  .firecrawl-credit-panel > footer strong { margin-left: 0; }
+}

@@ -1,0 +1,16 @@
+.research-handoff-gate { display: grid; grid-template-columns: 42px minmax(0,1fr); align-items: flex-start; gap: 13px; padding: 16px 29px; border-bottom: 1px solid #e2e7ee; }
+.research-handoff-gate.passed { background: #f1faf6; color: #195f42; }
+.research-handoff-gate.blocked { background: #fff6ee; color: #7b461d; }
+.research-handoff-gate-mark { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; color: #fff; font-size: 14px; font-weight: 900; }
+.research-handoff-gate.passed .research-handoff-gate-mark { background: #23845a; box-shadow: 0 7px 17px rgba(35,132,90,.17); }
+.research-handoff-gate.blocked .research-handoff-gate-mark { background: #d78034; box-shadow: 0 7px 17px rgba(215,128,52,.18); }
+.research-handoff-gate p, .research-handoff-gate h3 { margin: 0; }
+.research-handoff-gate p { font-size: 8px; font-weight: 900; letter-spacing: .11em; text-transform: uppercase; opacity: .72; }
+.research-handoff-gate h3 { margin-top: 4px; font-size: 15px; letter-spacing: -.015em; }
+.research-handoff-gate span { display: block; margin-top: 5px; font-size: 10px; line-height: 1.5; opacity: .78; }
+.research-handoff-gate ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.research-handoff-gate li { padding: 6px 8px; border: 1px solid rgba(134,77,25,.18); border-radius: 8px; background: rgba(255,255,255,.62); font-size: 9px; line-height: 1.4; }
+
+@media (max-width: 760px) {
+  .research-handoff-gate { padding: 15px 20px; }
+}

@@ -1,0 +1,5 @@
+/* Idea Memory now lives in its own Studio destination. */
+.idea-pro-tabs a:nth-child(2),
+.idea-pro-memory {
+  display: none;
+}

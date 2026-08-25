@@ -1,4 +1,66 @@
-const ArrowUpRight = () => <span aria-hidden="true">↗</span>;
+const Arrow = () => <span aria-hidden="true">↗</span>;
+
+const serviceItems = [
+  {
+    number: '01',
+    label: 'Clarity',
+    title: 'Know what to make next.',
+    description:
+      'A clear channel position, audience promise, content pillars, and a practical 90-day plan.',
+    outcome: 'Channel strategy',
+  },
+  {
+    number: '02',
+    label: 'Clicks',
+    title: 'Make the right people curious.',
+    description:
+      'Repeatable title and thumbnail systems that earn attention without losing your voice.',
+    outcome: 'Packaging system',
+  },
+  {
+    number: '03',
+    label: 'Retention',
+    title: 'Give viewers a reason to stay.',
+    description:
+      'Stronger formats, story structure, pacing, and creative direction for more watchable videos.',
+    outcome: 'Content direction',
+  },
+  {
+    number: '04',
+    label: 'Business',
+    title: 'Build beyond the next upload.',
+    description:
+      'A smarter path to partnerships, products, and revenue that fits the audience you are building.',
+    outcome: 'Creator growth',
+  },
+];
+
+const cases = [
+  {
+    className: 'case-deep-dive',
+    category: 'Documentary creator',
+    name: 'The Deep Dive',
+    challenge: 'Great stories. Inconsistent views.',
+    result: '2.6× returning viewers',
+    services: 'Strategy · Series · Packaging',
+  },
+  {
+    className: 'case-maya',
+    category: 'Lifestyle creator',
+    name: 'Maya After Hours',
+    challenge: 'A loyal audience without a clear brand.',
+    result: '+41% repeat audience',
+    services: 'Positioning · Identity · Growth',
+  },
+  {
+    className: 'case-fieldcraft',
+    category: 'Maker educator',
+    name: 'Fieldcraft',
+    challenge: 'Strong ideas. No repeatable format.',
+    result: '3.1× upload consistency',
+    services: 'Formats · Workflow · Audience',
+  },
+];
 
 export default function Home() {
   return (
@@ -10,313 +72,320 @@ export default function Home() {
         </a>
 
         <nav className="desktop-nav" aria-label="Primary navigation">
-          <a href="#expertise">Expertise</a>
-          <a href="#work">Selected work</a>
-          <a href="#approach">Approach</a>
-          <a href="#about">About</a>
+          <a href="#services">What we solve</a>
+          <a href="#work">Creator results</a>
+          <a href="#process">How it works</a>
+          <a href="#about">Why Arclane</a>
         </nav>
 
-        <a className="header-cta" href="#contact">
-          Let&apos;s talk <ArrowUpRight />
+        <a className="header-cta" href="/studio">
+          Open creator studio <Arrow />
         </a>
 
         <details className="mobile-menu">
           <summary aria-label="Open navigation">Menu</summary>
           <nav aria-label="Mobile navigation">
-            <a href="#expertise">Expertise</a>
-            <a href="#work">Selected work</a>
-            <a href="#approach">Approach</a>
-            <a href="#about">About</a>
-            <a href="#contact">Start a project</a>
+            <a href="#services">What we solve</a>
+            <a href="#work">Creator results</a>
+            <a href="#process">How it works</a>
+            <a href="#about">Why Arclane</a>
+            <a href="/studio">Open creator studio</a>
           </nav>
         </details>
       </header>
 
-      <section className="hero" id="top">
+      <section className="creator-hero" id="top">
         <div className="hero-copy">
           <p className="eyebrow">
-            <span /> Independent digital studio — Dhaka / Worldwide
+            <span /> Strategy and creative systems for YouTubers
           </p>
           <h1>
-            Digital experiences
+            Make better content.
             <br />
-            built to <em>lead.</em>
+            Grow a <em>stronger channel.</em>
           </h1>
           <p className="hero-intro">
-            We help ambitious companies turn complex ideas into clear,
-            high-performing digital products and brands.
+            Arclane gives ambitious creators a clear plan for what to make,
+            how to package it, and what to improve—without the guesswork.
           </p>
 
           <div className="hero-actions">
-            <a className="button button-primary" href="#contact">
-              Start a project <ArrowUpRight />
+            <a className="button button-primary" href="/studio">
+              Open creator studio <Arrow />
             </a>
-            <a className="text-link" href="#work">
-              Explore our work <span aria-hidden="true">↓</span>
+            <a className="text-link" href="#process">
+              See how it works <span aria-hidden="true">↓</span>
             </a>
           </div>
 
-          <div className="hero-proof" aria-label="Company highlights">
-            <div>
-              <strong>12+</strong>
-              <span>Markets reached</span>
-            </div>
-            <div>
-              <strong>38</strong>
-              <span>Products launched</span>
-            </div>
-            <div>
-              <strong>96%</strong>
-              <span>Partner retention</span>
-            </div>
+          <div className="creator-pill-row" aria-label="Creator services overview">
+            <span>Channel strategy</span>
+            <span>Content systems</span>
+            <span>Packaging &amp; growth</span>
           </div>
         </div>
 
-        <div className="hero-visual" aria-label="Arclane digital experience preview">
-          <div className="visual-topline">
-            <span>Strategy / Design / Technology</span>
-            <span>©26</span>
-          </div>
-          <div className="orbital-system" aria-hidden="true">
-            <span className="orbit orbit-one" />
-            <span className="orbit orbit-two" />
-            <span className="orbit orbit-three" />
-            <span className="orbit-core">A</span>
-            <span className="orbit-node node-one" />
-            <span className="orbit-node node-two" />
-          </div>
-          <div className="visual-footer">
+        <div className="creator-dashboard" aria-label="Creator growth workspace preview">
+          <div className="dashboard-topbar">
             <div>
-              <span>Current focus</span>
-              <strong>Intelligent digital systems</strong>
+              <span className="dashboard-logo">A</span>
+              <strong>Creator workspace</strong>
             </div>
-            <span className="visual-index">01</span>
+            <span className="live-status"><i /> Strategy active</span>
+          </div>
+
+          <div className="channel-overview">
+            <div>
+              <span className="channel-avatar">YC</span>
+              <p><strong>Your channel</strong><span>Weekly creator review</span></p>
+            </div>
+            <span className="week-label">Week 08</span>
+          </div>
+
+          <div className="growth-score">
+            <div>
+              <span>Channel momentum</span>
+              <strong>82</strong>
+              <small>Strong and rising</small>
+            </div>
+            <div className="score-ring" aria-hidden="true"><span>+12</span></div>
+          </div>
+
+          <div className="metric-grid" aria-label="Example channel metrics">
+            <div><span>Avg. view</span><strong>8:42</strong><small>↑ 18%</small></div>
+            <div><span>Click rate</span><strong>7.8%</strong><small>↑ 1.4</small></div>
+            <div><span>Returning</span><strong>41%</strong><small>↑ 9%</small></div>
+          </div>
+
+          <div className="next-upload">
+            <div className="upload-thumb" aria-hidden="true"><span>08:16</span></div>
+            <div><span>Next upload</span><strong>The idea your audience keeps asking for</strong></div>
+            <span className="ready-badge">Ready</span>
           </div>
         </div>
       </section>
 
-      <section className="trust-strip" aria-label="Selected partners">
-        <p>Trusted by teams building what&apos;s next</p>
+      <section className="creator-strip" aria-label="Creator types we support">
+        <p>Made for creators building seriously</p>
         <div>
-          <span>WAVELINE</span>
-          <span>MONUMENT</span>
-          <span>POLARIS</span>
-          <span>NORTH &amp; CO.</span>
-          <span>STUDIO/88</span>
+          <span>Educators</span>
+          <span>Storytellers</span>
+          <span>Commentators</span>
+          <span>Makers</span>
+          <span>Experts</span>
         </div>
       </section>
 
-      <section className="manifesto section-pad" id="about">
-        <div className="section-kicker">What we believe</div>
-        <div className="manifesto-copy">
-          <p className="manifesto-lead">
-            Good design earns attention.
+      <section className="clarity-section section-pad" id="about">
+        <p className="section-kicker">The creator problem</p>
+        <div className="clarity-layout">
+          <h2>
+            You don&apos;t need more content advice.
             <br />
-            <em>Great design earns trust.</em>
-          </p>
-          <div className="manifesto-detail">
+            <em>You need a clear system.</em>
+          </h2>
+          <div className="clarity-copy">
             <p>
-              We work where brand, product, and technology meet—creating
-              digital systems that feel clear to people and valuable to
-              businesses.
+              Arclane turns scattered ideas, confusing analytics, and big
+              ambition into one practical direction your channel can actually
+              follow.
             </p>
-            <a className="underlined-link" href="#approach">
-              Discover our approach <ArrowUpRight />
+            <a className="inline-link" href="#services">
+              See what we solve <Arrow />
             </a>
           </div>
         </div>
+
+        <div className="clarity-points">
+          <article>
+            <span>01</span>
+            <strong>Know what to make</strong>
+            <p>A focused content direction instead of an endless idea list.</p>
+          </article>
+          <article>
+            <span>02</span>
+            <strong>Know why it works</strong>
+            <p>Simple audience signals you can understand and use.</p>
+          </article>
+          <article>
+            <span>03</span>
+            <strong>Know what to improve</strong>
+            <p>One useful next move after every upload—not twenty.</p>
+          </article>
+        </div>
       </section>
 
-      <section className="expertise section-pad" id="expertise">
-        <div className="section-heading">
+      <section className="services section-pad" id="services">
+        <div className="section-heading light-heading">
           <div>
-            <p className="section-kicker light">Capabilities</p>
-            <h2>From first idea to lasting impact.</h2>
+            <p className="section-kicker light">What we solve</p>
+            <h2>Everything your channel needs to move forward.</h2>
           </div>
           <p>
-            A senior, integrated team across strategy, design, and
-            engineering—assembled around the outcome you need.
+            No bloated agency team. No generic playbook. Just focused help
+            around the creator problem holding you back right now.
           </p>
         </div>
 
-        <div className="service-list">
-          <article>
-            <span className="service-number">01</span>
-            <h3>Strategy &amp; positioning</h3>
-            <p>Research, product strategy, brand positioning, and digital roadmaps.</p>
-            <span className="service-arrow" aria-hidden="true">↗</span>
-          </article>
-          <article>
-            <span className="service-number">02</span>
-            <h3>Brand systems</h3>
-            <p>Identity, verbal direction, visual systems, and launch toolkits.</p>
-            <span className="service-arrow" aria-hidden="true">↗</span>
-          </article>
-          <article>
-            <span className="service-number">03</span>
-            <h3>Digital products</h3>
-            <p>Websites, platforms, SaaS products, and intelligent interfaces.</p>
-            <span className="service-arrow" aria-hidden="true">↗</span>
-          </article>
-          <article>
-            <span className="service-number">04</span>
-            <h3>Technology</h3>
-            <p>Full-stack engineering, design systems, optimization, and scale.</p>
-            <span className="service-arrow" aria-hidden="true">↗</span>
-          </article>
+        <div className="service-grid">
+          {serviceItems.map((item) => (
+            <article key={item.number}>
+              <div className="service-topline">
+                <span>{item.number}</span>
+                <span>{item.label}</span>
+              </div>
+              <h3>{item.title}</h3>
+              <p>{item.description}</p>
+              <div className="service-outcome">
+                <span>{item.outcome}</span>
+                <Arrow />
+              </div>
+            </article>
+          ))}
         </div>
       </section>
 
       <section className="work section-pad" id="work">
         <div className="section-heading work-heading">
           <div>
-            <p className="section-kicker">Selected work</p>
-            <h2>Work that moves business forward.</h2>
+            <p className="section-kicker">Creator results</p>
+            <h2>Real channel problems. Clear creator outcomes.</h2>
           </div>
-          <a className="underlined-link" href="#contact">
-            Discuss your project <ArrowUpRight />
+          <a className="inline-link" href="#contact">
+            Talk about your channel <Arrow />
           </a>
         </div>
 
-        <div className="projects">
-          <article className="project project-large">
-            <div className="project-art project-art-aster" aria-hidden="true">
-              <div className="aster-panel">
-                <span>ASTER / PRIVATE CAPITAL</span>
-                <strong>Clarity for every financial decision.</strong>
-                <i>Explore the portfolio ↗</i>
+        <div className="case-grid">
+          {cases.map((item, index) => (
+            <article className={`case-card ${index === 0 ? 'case-featured' : ''}`} key={item.name}>
+              <div className={`case-art ${item.className}`} aria-hidden="true">
+                <div className="case-browserbar"><i /><i /><i /><span>Creator channel</span></div>
+                <div className="case-thumbnail">
+                  <span className="case-category">{item.category}</span>
+                  <strong>{item.challenge}</strong>
+                  <span className="play-mark">▶</span>
+                  <small>{index === 0 ? '14:28' : index === 1 ? '09:42' : '12:06'}</small>
+                </div>
+                <div className="case-video-meta">
+                  <span className="mini-avatar">{item.name.slice(0, 1)}</span>
+                  <div><b>{item.name}</b><span>New creator system in action</span></div>
+                  <span>•••</span>
+                </div>
               </div>
-              <div className="aster-orb" />
-            </div>
-            <div className="project-meta">
-              <div>
-                <h3>Aster Finance</h3>
-                <p>Digital flagship for a new generation of private wealth</p>
+              <div className="case-meta">
+                <div>
+                  <span>{item.category}</span>
+                  <h3>{item.name}</h3>
+                  <p>{item.challenge}</p>
+                </div>
+                <div>
+                  <strong>{item.result}</strong>
+                  <span>{item.services}</span>
+                </div>
               </div>
-              <span>Strategy · Brand · Product · Build</span>
-            </div>
-          </article>
+            </article>
+          ))}
+        </div>
+      </section>
 
-          <article className="project">
-            <div className="project-art project-art-calia" aria-hidden="true">
-              <div className="calia-word">calia</div>
-              <div className="calia-card">
-                <span>Today&apos;s readiness</span>
-                <strong>92</strong>
-                <i>Rested &amp; ready</i>
-              </div>
-              <div className="calia-pulse">● ● ● ● ●</div>
-            </div>
-            <div className="project-meta">
-              <div>
-                <h3>Calia Health</h3>
-                <p>A calmer, more human everyday health platform</p>
-              </div>
-              <span>Product · Experience · Build</span>
-            </div>
-          </article>
+      <section className="process section-pad" id="process">
+        <div className="process-heading">
+          <p className="section-kicker">How it works</p>
+          <h2>Three simple steps.<br /><em>One clearer channel.</em></h2>
+          <p>You stay the creator. We make the next move easier to see.</p>
+        </div>
 
-          <article className="project">
-            <div className="project-art project-art-north" aria-hidden="true">
-              <div className="north-label">NORTHLINE</div>
-              <div className="north-copy">
-                <span>68° 13&apos; N</span>
-                <strong>Energy for a changing world.</strong>
-              </div>
-              <div className="north-sun" />
-            </div>
-            <div className="project-meta">
-              <div>
-                <h3>Northline Energy</h3>
-                <p>Reframing an energy company around progress</p>
-              </div>
-              <span>Positioning · Identity · Digital</span>
-            </div>
+        <div className="process-steps">
+          <article>
+            <span className="step-number">01</span>
+            <div className="step-icon" aria-hidden="true">◎</div>
+            <h3>Share your channel</h3>
+            <p>We look at your content, audience, goals, and where growth feels stuck.</p>
+            <small>Channel review</small>
+          </article>
+          <article>
+            <span className="step-number">02</span>
+            <div className="step-icon" aria-hidden="true">✦</div>
+            <h3>Get a focused plan</h3>
+            <p>You get a clear strategy for content, packaging, and the next 90 days.</p>
+            <small>Creator roadmap</small>
+          </article>
+          <article>
+            <span className="step-number">03</span>
+            <div className="step-icon" aria-hidden="true">↗</div>
+            <h3>Build with clarity</h3>
+            <p>We work alongside you to make, measure, and improve without losing your voice.</p>
+            <small>Weekly momentum</small>
           </article>
         </div>
       </section>
 
-      <section className="approach section-pad" id="approach">
-        <div className="approach-intro">
-          <p className="section-kicker light">How we work</p>
-          <h2>Senior thinking.<br />Simple process.<br /><em>Zero theatre.</em></h2>
-          <p>
-            You work directly with the people doing the work. Small teams,
-            clear decisions, and momentum you can feel every week.
-          </p>
+      <section className="results section-pad">
+        <div className="result-quote">
+          <span className="quote-mark" aria-hidden="true">“</span>
+          <blockquote>
+            They didn&apos;t change what made my channel mine. They made every
+            decision easier—and the audience felt the difference.
+          </blockquote>
+          <p><strong>Maya Rahman</strong><span>Creator, Maya After Hours</span></p>
         </div>
 
-        <div className="process-list">
-          <article>
-            <span>01 / Align</span>
-            <h3>Find the sharpest version of the problem.</h3>
-            <p>We align on ambition, audience, constraints, and the decisions that matter most.</p>
-          </article>
-          <article>
-            <span>02 / Create</span>
-            <h3>Turn strategy into a system people can feel.</h3>
-            <p>Ideas become tangible early—tested, refined, and built together in the open.</p>
-          </article>
-          <article>
-            <span>03 / Advance</span>
-            <h3>Launch well, learn quickly, keep improving.</h3>
-            <p>We ship with confidence, measure what matters, and help your team build forward.</p>
-          </article>
-        </div>
-      </section>
-
-      <section className="outcomes section-pad">
-        <div className="quote-mark" aria-hidden="true">“</div>
-        <blockquote>
-          Arclane brought rare clarity to a complicated brief. The result was
-          not just a better product—it changed how our team sees the business.
-        </blockquote>
-        <p className="quote-credit"><strong>Leah Morgan</strong> / Chief Growth Officer, Aster</p>
-
-        <div className="outcome-stats">
-          <div><strong>2.8×</strong><span>Average conversion uplift</span></div>
-          <div><strong>34%</strong><span>Faster time to market</span></div>
-          <div><strong>4.9/5</strong><span>Partner experience score</span></div>
-          <div><strong>7 yrs</strong><span>Average team experience</span></div>
+        <div className="result-stats" aria-label="Example creator outcomes">
+          <div><strong>3.4×</strong><span>Average view growth</span></div>
+          <div><strong>+41%</strong><span>Returning viewers</span></div>
+          <div><strong>68%</strong><span>Average retention</span></div>
+          <div><strong>4.9/5</strong><span>Creator experience</span></div>
         </div>
       </section>
 
       <section className="contact" id="contact">
-        <div className="contact-orbit" aria-hidden="true">
-          <span />
-          <i />
+        <div className="contact-copy">
+          <p className="section-kicker light">Your clearest next move starts here</p>
+          <h2>One channel.<br />One clear plan.</h2>
+          <p>
+            Tell us what feels stuck. We&apos;ll help you see what to fix first.
+          </p>
+          <a className="button button-light" href="/studio">
+            Open creator studio <Arrow />
+          </a>
         </div>
-        <p className="section-kicker light">Have a meaningful challenge?</p>
-        <h2>Let&apos;s build what&apos;s next.</h2>
-        <a className="button button-light" href="mailto:hello@arclane.studio">
-          hello@arclane.studio <ArrowUpRight />
-        </a>
+        <div className="contact-card" aria-label="Channel review summary">
+          <div className="contact-card-top"><span>Arclane channel review</span><span>01 / Start</span></div>
+          <div className="review-orbit" aria-hidden="true"><span>A</span></div>
+          <div className="review-list">
+            <div><span>01</span><strong>Your channel now</strong><i>Included</i></div>
+            <div><span>02</span><strong>Your clearest opportunity</strong><i>Included</i></div>
+            <div><span>03</span><strong>Your next best move</strong><i>Included</i></div>
+          </div>
+        </div>
       </section>
 
       <footer className="site-footer">
-        <div className="footer-brand">
-          <a className="brand brand-light" href="#top">
-            <span className="brand-mark" aria-hidden="true" /> ARCLANE
-          </a>
-          <p>Independent digital studio.<br />Dhaka / Working worldwide.</p>
-        </div>
-        <div className="footer-links">
+        <div className="footer-main">
           <div>
-            <span>Navigate</span>
-            <a href="#expertise">Expertise</a>
-            <a href="#work">Selected work</a>
-            <a href="#approach">Approach</a>
+            <a className="brand brand-light" href="#top">
+              <span className="brand-mark" aria-hidden="true" /> ARCLANE
+            </a>
+            <p>Clear strategy for creators<br />building something that lasts.</p>
           </div>
-          <div>
-            <span>Connect</span>
-            <a href="mailto:hello@arclane.studio">Email</a>
-            <a href="#top">LinkedIn</a>
-            <a href="#top">Instagram</a>
+          <div className="footer-links">
+            <div>
+              <span>Explore</span>
+              <a href="#services">What we solve</a>
+              <a href="#work">Creator results</a>
+              <a href="#process">How it works</a>
+            </div>
+            <div>
+              <span>Start</span>
+              <a href="mailto:hello@arclane.studio">Email Arclane</a>
+              <a href="/studio">Creator Studio</a>
+            </div>
           </div>
         </div>
         <div className="footer-bottom">
-          <span>© 2026 Arclane Studio</span>
-          <span>Designed with intention. Built for speed.</span>
+          <span>© 2026 Arclane Creator Studio</span>
+          <span>Dhaka / Working worldwide</span>
           <a href="#top">Back to top ↑</a>
         </div>
       </footer>
