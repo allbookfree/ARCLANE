@@ -64,9 +64,9 @@ export const studioStages: StudioStage[] = [
     symbol: '♪', tone: 'amber', actionLabel: 'Build audio plan', nextPath: '/studio/thumbnails', nextLabel: 'Thumbnails',
   },
   {
-    id: 'thumbnails', number: '07', code: 'TH', title: 'Thumbnails', eyebrow: 'Four packaging directions',
-    description: 'Generate four distinct thumbnail concepts with composition, text, and high-quality image prompts.',
-    emptyCopy: 'Four channel-fit packaging options will appear here for comparison.',
+    id: 'thumbnails', number: '07', code: 'TH', title: 'Thumbnails', eyebrow: 'Three test-ready directions',
+    description: 'Create three truthful, materially different thumbnail directions with production-ready image prompts.',
+    emptyCopy: 'Three channel-fit options will appear for production, comparison, and one Final selection.',
     symbol: '◩', tone: 'pink', actionLabel: 'Create thumbnail options', nextPath: '/studio/description', nextLabel: 'Description',
   },
   {

@@ -11,8 +11,7 @@ type ProviderId = 'openai' | 'anthropic' | 'gemini' | 'custom';
 type AuthMethod = 'bearer' | 'api-key';
 type AudioMode = 'normal' | 'faith_safe';
 type BedType = 'music' | 'ambience' | 'silence';
-type AccentType = 'ambience' | 'foley' | 'sound_effect';
-type AudioSource = 'youtube_audio_library' | 'pixabay';
+type AudioSource = 'youtube_audio_library' | 'pixabay' | 'none';
 
 type Model = { id: string; name: string; description?: string };
 type Selection = {
@@ -52,56 +51,34 @@ type VisualTimelineEntry = {
   direction: string;
 };
 type VisualPlan = { version: string; scenes: VisualScene[]; timeline: VisualTimelineEntry[] };
-type AudioAccent = {
-  atSeconds: number;
-  type: AccentType;
-  sound: string;
-  purpose: string;
-  searchQuery: string;
-  source: AudioSource;
+type CapCutSettings = {
+  volumeDb: number;
+  fadeInSeconds: number;
+  fadeOutSeconds: number;
 };
 type AudioZone = {
   zoneId: string;
   startSeconds: number;
   endSeconds: number;
-  purpose: string;
-  bedType: BedType;
-  bedDescription: string;
-  mood: string;
-  energy: string;
-  searchQueries: string[];
-  sources: AudioSource[];
-  entry: string;
-  exit: string;
-  voiceMix: string;
-  accents: AudioAccent[];
-};
-type AudioStrategy = {
-  sonicIdentity: string;
-  storyArc: string;
-  voicePriority: string;
-  silenceRule: string;
-  copyrightRule: string;
-  mixRules: string[];
+  soundType: BedType;
+  searchQuery: string;
+  source: AudioSource;
+  capCut: CapCutSettings | null;
 };
 type AudioPlan = {
-  version: 'ARCLANE_AUDIO_PLAN_2026_08_V1';
+  version: 'ARCLANE_AUDIO_PLAN_2026_08_V3';
   mode: AudioMode;
-  strategy: AudioStrategy;
   zones: AudioZone[];
-  finalChecks: string[];
 };
-
 const connectionStorageKey = 'arclane.model-connections.v1';
 const workflowStorageKey = 'arclane.creator-workflow.v1';
 const modelPreferenceKey = 'arclane.workflow-models.v1';
 const audioModePreferenceKey = 'arclane.audio-mode.v1';
 const connectionChangeEvent = 'arclane:model-connections-changed';
 const initialWorkflow: WorkflowState = { stages: {} };
-const audioPlanVersion = 'ARCLANE_AUDIO_PLAN_2026_08_V1' as const;
-const allowedSources = new Set<AudioSource>(['youtube_audio_library', 'pixabay']);
+const audioPlanVersion = 'ARCLANE_AUDIO_PLAN_2026_08_V3' as const;
+const allowedSources = new Set<AudioSource>(['youtube_audio_library', 'pixabay', 'none']);
 const allowedBedTypes = new Set<BedType>(['music', 'ambience', 'silence']);
-const allowedAccentTypes = new Set<AccentType>(['ambience', 'foley', 'sound_effect']);
 const faithForbidden = /\b(music|musical|melody|melodic|instrument|instrumental|orchestra|orchestral|piano|violin|guitar|drum|percussion|beat|song|singing|vocal|vocals|chant|chanting|humming|choir|nasheed|synth|synthesizer|pad)\b/i;
 
 function readJson<T>(key: string, fallback: T): T {
@@ -139,6 +116,11 @@ function numberValue(value: unknown) {
   const number = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(number) ? number : Number.NaN;
 }
+function boundedNumber(value: unknown, minimum: number, maximum: number, fallback: number) {
+  const number = numberValue(value);
+  return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, number)) : fallback;
+}
+
 
 function parseJsonObject(content: string, label: string) {
   const unfenced = content.replace(/^\s*\x60{3}(?:json)?\s*/i, '').replace(/\x60{3}\s*$/i, '').trim();
@@ -186,156 +168,131 @@ function readVisualPlan(content: string): VisualPlan | null {
 }
 
 function sourceLabel(source: AudioSource) {
-  return source === 'youtube_audio_library' ? 'YouTube Audio Library' : 'Pixabay';
+  if (source === 'youtube_audio_library') return 'YouTube Audio Library';
+  if (source === 'pixabay') return 'Pixabay Sounds';
+  return 'No sound needed';
 }
 function sourceUrl(source: AudioSource) {
-  return source === 'youtube_audio_library' ? 'https://www.youtube.com/audiolibrary' : 'https://pixabay.com/sound-effects/';
+  if (source === 'youtube_audio_library') return 'https://www.youtube.com/audiolibrary';
+  if (source === 'pixabay') return 'https://pixabay.com/sound-effects/';
+  return '#';
 }
 function bedLabel(type: BedType) {
-  if (type === 'music') return 'Music bed';
-  if (type === 'ambience') return 'Ambience bed';
-  return 'Protected silence';
-}
-function accentLabel(type: AccentType) {
-  if (type === 'sound_effect') return 'Sound effect';
-  if (type === 'foley') return 'Foley';
-  return 'Ambience';
+  if (type === 'music') return 'Background music';
+  if (type === 'ambience') return 'Ambience / sound';
+  return 'Silence';
 }
 function formatTime(seconds: number) {
   const safe = Math.max(0, Math.round(seconds));
   return Math.floor(safe / 60) + ':' + String(safe % 60).padStart(2, '0');
 }
 
-function normalizeStrategy(value: unknown): AudioStrategy {
-  const strategy = asRecord(value);
-  const mixRules = stringList(strategy.mixRules, 6);
+function normalizeCapCut(value: unknown, legacyValue: unknown, soundType: BedType): CapCutSettings | null {
+  if (soundType === 'silence') return null;
+  const settings = asRecord(value);
+  const legacy = asRecord(legacyValue);
+  const music = soundType === 'music';
+  const defaultVolume = music ? -22 : -24;
   return {
-    sonicIdentity: stringValue(strategy.sonicIdentity) || 'Narration-first documentary sound with restrained, story-specific texture.',
-    storyArc: stringValue(strategy.storyArc) || 'Sound follows the story movements and withdraws when silence communicates more.',
-    voicePriority: stringValue(strategy.voicePriority) || 'Keep the narration clearly dominant and duck every continuous bed beneath speech.',
-    silenceRule: stringValue(strategy.silenceRule) || 'Protect silence around sensitive facts, turning points and the final payoff.',
-    copyrightRule: stringValue(strategy.copyrightRule) || 'Download from the named official source and preserve the exact asset, source, date, licence and attribution record.',
-    mixRules: mixRules.length ? mixRules : ['Keep narration dominant.', 'Use natural fades at boundaries.', 'Review the finished mix on headphones and ordinary speakers.'],
+    volumeDb: Math.round(boundedNumber(settings.volumeDb ?? legacy.bedLevelDb, music ? -26 : -30, music ? -18 : -20, defaultVolume) * 10) / 10,
+    fadeInSeconds: Math.round(boundedNumber(settings.fadeInSeconds ?? legacy.fadeInSeconds, 0, 5, 1.5) * 10) / 10,
+    fadeOutSeconds: Math.round(boundedNumber(settings.fadeOutSeconds ?? legacy.fadeOutSeconds, 0, 5, 1.5) * 10) / 10,
   };
 }
 
-function normalizeQueries(raw: unknown, zone: Pick<AudioZone, 'bedDescription' | 'mood' | 'bedType'>) {
-  if (zone.bedType === 'silence') return [];
-  const queries = stringList(raw, 2);
-  const base = [zone.bedDescription, zone.mood].filter(Boolean).join(' ');
-  if (!queries.length) queries.push(base || (zone.bedType === 'music' ? 'restrained documentary background' : 'natural historical environment ambience'));
-  if (queries.length < 2) queries.push((base || queries[0]) + (zone.bedType === 'music' ? ' subtle narration bed' : ' clean room tone sound effect'));
-  return queries.slice(0, 2);
-}
-
-function parseAudioPlan(content: string, mode: AudioMode, totalDuration: number): AudioPlan {
+function parseAudioPlan(content: string, mode: AudioMode, totalDuration: number, requireCompleteCoverage = true): AudioPlan {
   const root = parseJsonObject(content, 'Audio Plan');
   const rawZones = Array.isArray(root.zones) ? root.zones : [];
   if (!rawZones.length) throw new Error('The model returned no usable Audio timeline. Your saved work is unchanged; try again or choose another model.');
-  if (rawZones.length > 10) throw new Error('The model returned more than ten Audio zones. Nothing was replaced; click Build Audio Plan once more.');
 
   let previousEnd = -0.001;
   const zones = rawZones.map((value, index) => {
     const raw = asRecord(value);
     const startSeconds = Math.round(numberValue(raw.startSeconds) * 10) / 10;
     const endSeconds = Math.round(numberValue(raw.endSeconds) * 10) / 10;
-    const requestedBed = stringValue(raw.bedType) as BedType;
-    const bedType = allowedBedTypes.has(requestedBed) ? requestedBed : 'ambience';
-    const sources = stringList(raw.sources, 2).filter((source): source is AudioSource => allowedSources.has(source as AudioSource));
+    const requestedType = (stringValue(raw.soundType) || stringValue(raw.bedType)) as BedType;
+    const soundType = allowedBedTypes.has(requestedType) ? requestedType : 'ambience';
+    const legacySources = stringList(raw.sources, 1);
+    const requestedSource = (stringValue(raw.source) || legacySources[0]) as AudioSource;
+    const legacyQueries = stringList(raw.searchQueries, 1);
+    const defaultQuery = soundType === 'music' ? 'restrained documentary background music' : 'natural historical ambience sound effect';
+    const rawQuery = stringValue(raw.searchQuery) || legacyQueries[0] || defaultQuery;
+    const queryWithoutUrl = /https?:\/\//i.test(rawQuery) ? defaultQuery : rawQuery.replace(/^["']|["']$/g, '');
+    const searchQuery = soundType === 'silence' ? '' : queryWithoutUrl.split(/\s+/).filter(Boolean).slice(0, 14).join(' ');
+    const source: AudioSource = soundType === 'silence'
+      ? 'none'
+      : soundType === 'music'
+        ? 'youtube_audio_library'
+        : allowedSources.has(requestedSource) && requestedSource !== 'none' ? requestedSource : 'youtube_audio_library';
     const zone: AudioZone = {
       zoneId: stringValue(raw.zoneId) || 'AUDIO-' + String(index + 1).padStart(2, '0'),
       startSeconds,
       endSeconds,
-      purpose: stringValue(raw.purpose),
-      bedType,
-      bedDescription: stringValue(raw.bedDescription),
-      mood: stringValue(raw.mood),
-      energy: stringValue(raw.energy) || 'low',
-      searchQueries: [],
-      sources: bedType === 'silence'
-        ? []
-        : sources.length
-          ? (bedType === 'music' ? sources.filter((source) => source === 'youtube_audio_library') : sources)
-          : (bedType === 'music' ? ['youtube_audio_library'] : ['youtube_audio_library', 'pixabay']),
-      entry: stringValue(raw.entry),
-      exit: stringValue(raw.exit),
-      voiceMix: stringValue(raw.voiceMix),
-      accents: [],
+      soundType,
+      searchQuery,
+      source,
+      capCut: normalizeCapCut(raw.capCut, raw.mixSettings, soundType),
     };
-    zone.searchQueries = normalizeQueries(raw.searchQueries, zone);
-
-    const rawAccents = Array.isArray(raw.accents) ? raw.accents.slice(0, 3) : [];
-    zone.accents = rawAccents.map((accentValue) => {
-      const accent = asRecord(accentValue);
-      const requestedType = stringValue(accent.type) as AccentType;
-      const requestedSource = stringValue(accent.source) as AudioSource;
-      return {
-        atSeconds: Math.round(numberValue(accent.atSeconds) * 10) / 10,
-        type: allowedAccentTypes.has(requestedType) ? requestedType : 'sound_effect',
-        sound: stringValue(accent.sound),
-        purpose: stringValue(accent.purpose),
-        searchQuery: stringValue(accent.searchQuery),
-        source: allowedSources.has(requestedSource) ? requestedSource : 'youtube_audio_library',
-      };
-    }).filter((accent) => Number.isFinite(accent.atSeconds) && accent.sound && accent.searchQuery);
 
     if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) || startSeconds < 0 || endSeconds <= startSeconds || endSeconds > totalDuration + 1) {
       throw new Error(zone.zoneId + ' has an invalid time range. Nothing was replaced; click Build Audio Plan once more.');
     }
-    if (startSeconds < previousEnd - 0.1) throw new Error('The Audio zones overlap or are out of order. Nothing was replaced; click Build Audio Plan once more.');
-    if (!zone.purpose || !zone.bedDescription || !zone.entry || !zone.exit || !zone.voiceMix) {
-      throw new Error(zone.zoneId + ' is incomplete. Nothing was replaced; click Build Audio Plan once more.');
-    }
-    if (bedType !== 'silence' && (zone.searchQueries.length !== 2 || !zone.sources.length)) {
-      throw new Error(zone.zoneId + ' has no usable source search. Nothing was replaced; click Build Audio Plan once more.');
-    }
-    if (bedType === 'music' && zone.sources.some((source) => source !== 'youtube_audio_library')) zone.sources = ['youtube_audio_library'];
-    if (zone.accents.some((accent) => accent.atSeconds < startSeconds || accent.atSeconds > endSeconds)) {
-      throw new Error(zone.zoneId + ' contains a sound accent outside its own time range. Nothing was replaced.');
+    if (startSeconds < previousEnd - 0.1) throw new Error('The Audio sections overlap or are out of order. Nothing was replaced; click Build Audio Plan once more.');
+    if (zone.capCut) {
+      const maximumFade = Math.max(0, Math.min(5, (endSeconds - startSeconds) / 3));
+      zone.capCut.fadeInSeconds = Math.round(Math.min(zone.capCut.fadeInSeconds, maximumFade) * 10) / 10;
+      zone.capCut.fadeOutSeconds = Math.round(Math.min(zone.capCut.fadeOutSeconds, maximumFade) * 10) / 10;
     }
     previousEnd = endSeconds;
     return zone;
   });
 
+  const essentialZones = zones.reduce<AudioZone[]>((result, zone) => {
+    const previous = result.at(-1);
+    const sameContinuousSound = previous
+      && Math.abs(previous.endSeconds - zone.startSeconds) <= 0.2
+      && previous.soundType === zone.soundType
+      && previous.source === zone.source
+      && previous.searchQuery.toLowerCase() === zone.searchQuery.toLowerCase()
+      && (previous.capCut?.volumeDb ?? null) === (zone.capCut?.volumeDb ?? null);
+    if (sameContinuousSound) {
+      previous.endSeconds = zone.endSeconds;
+      if (previous.capCut && zone.capCut) previous.capCut.fadeOutSeconds = zone.capCut.fadeOutSeconds;
+      return result;
+    }
+    result.push({ ...zone, capCut: zone.capCut ? { ...zone.capCut } : null });
+    return result;
+  }, []);
+  essentialZones.forEach((zone, index) => { zone.zoneId = 'AUDIO-' + String(index + 1).padStart(2, '0'); });
+
+  const firstZone = essentialZones[0];
+  const lastZone = essentialZones[essentialZones.length - 1];
+  const uncoveredBoundary = firstZone.startSeconds > 0.1 || Math.abs(lastZone.endSeconds - totalDuration) > 0.2;
+  const uncoveredGap = essentialZones.some((zone, index) => index > 0 && Math.abs(zone.startSeconds - essentialZones[index - 1].endSeconds) > 0.2);
+  if (requireCompleteCoverage && (uncoveredBoundary || uncoveredGap)) {
+    throw new Error('The Audio plan did not cover the complete ' + formatTime(totalDuration) + ' timeline. Your previous plan is unchanged; click Build Audio Plan again.');
+  }
+
   if (mode === 'faith_safe') {
-    const unsafeZone = zones.find((zone) => zone.bedType === 'music' || faithForbidden.test(JSON.stringify({
-      bedDescription: zone.bedDescription,
-      mood: zone.mood,
-      energy: zone.energy,
-      searchQueries: zone.searchQueries,
-      accents: zone.accents,
-    })));
+    const unsafeZone = essentialZones.find((zone) => zone.soundType === 'music' || faithForbidden.test(zone.searchQuery));
     if (unsafeZone) throw new Error('The model included a musical element while Faith-safe audio was on. Nothing was replaced; try again or choose another model.');
   }
 
-  const finalChecks = stringList(root.finalChecks, 8);
-  return {
-    version: audioPlanVersion,
-    mode,
-    strategy: normalizeStrategy(root.strategy),
-    zones,
-    finalChecks: finalChecks.length ? finalChecks : [
-      'Verify every exact asset before editing.',
-      'Preserve the source and licence record.',
-      'Keep narration dominant.',
-      'Review on headphones and ordinary speakers.',
-      'Run YouTube checks before publishing.',
-    ],
-  };
+  return { version: audioPlanVersion, mode, zones: essentialZones };
 }
 
-function readSavedPlan(content: string): AudioPlan | null {
+function readSavedPlan(content: string, expectedDuration: number): AudioPlan | null {
   try {
     const root = parseJsonObject(content, 'Audio Plan');
-    if (root.version !== audioPlanVersion || !Array.isArray(root.zones)) return null;
+    const supportedVersions = new Set([audioPlanVersion, 'ARCLANE_AUDIO_PLAN_2026_08_V2', 'ARCLANE_AUDIO_PLAN_2026_08_V1']);
+    if (!supportedVersions.has(stringValue(root.version)) || !Array.isArray(root.zones)) return null;
     const mode: AudioMode = root.mode === 'faith_safe' ? 'faith_safe' : 'normal';
     const maxEnd = root.zones.reduce((maximum, value) => Math.max(maximum, numberValue(asRecord(value).endSeconds) || 0), 0);
-    return parseAudioPlan(content, mode, Math.max(maxEnd, 1));
+    return parseAudioPlan(content, mode, Math.max(expectedDuration, maxEnd, 1), false);
   } catch {
     return null;
   }
 }
-
 function providerMark(providerId: ProviderId) {
   if (providerId === 'openai') return 'O';
   if (providerId === 'anthropic') return 'A';
@@ -354,7 +311,6 @@ export default function AudioWorkspace() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [visibleZones, setVisibleZones] = useState(5);
   const [modal, setModal] = useState<'script' | 'timeline' | null>(null);
 
   const scriptRecord = workflow.stages.scripts;
@@ -363,8 +319,12 @@ export default function AudioWorkspace() {
   const audioRecord = workflow.stages.audio;
   const selectedIdea = workflow.selectedIdea;
   const visualPlan = useMemo(() => readVisualPlan(visualsRecord?.content ?? ''), [visualsRecord?.content]);
-  const audioPlan = useMemo(() => readSavedPlan(audioRecord?.content ?? ''), [audioRecord?.content]);
   const totalDuration = visualPlan?.timeline.at(-1)?.endSeconds ?? 0;
+  const audioPlan = useMemo(() => readSavedPlan(audioRecord?.content ?? '', totalDuration), [audioRecord?.content, totalDuration]);
+  const legacyPlanPreserved = Boolean(audioRecord?.content.trim() && !audioPlan);
+  const audioPlanEnd = audioPlan?.zones.at(-1)?.endSeconds ?? 0;
+  const coverageComplete = Boolean(audioPlan && totalDuration > 0 && Math.abs(audioPlanEnd - totalDuration) <= 0.2);
+  const coveragePercent = totalDuration > 0 ? Math.min(100, Math.round((audioPlanEnd / totalDuration) * 100)) : 0;
   const scriptFinal = Boolean(scriptRecord?.content.trim() && scriptRecord.scriptReview?.status === 'approved');
   const voiceCurrent = Boolean(voiceRecord?.content.trim() && voiceRecord.sourceScriptUpdatedAt === scriptRecord?.updatedAt);
   const visualsCurrent = Boolean(
@@ -379,7 +339,8 @@ export default function AudioWorkspace() {
     && audioRecord?.sourceVoiceoverUpdatedAt === voiceRecord?.updatedAt
     && audioRecord?.sourceVisualsUpdatedAt === visualsRecord?.updatedAt
     && audioRecord?.audioMode === audioMode
-    && audioPlan.mode === audioMode,
+    && audioPlan.mode === audioMode
+    && coverageComplete,
   );
   const activeConnection = connections.find((item) => item.providerId === providerId);
   const activeModel = activeConnection?.models.find((model) => model.id === modelId);
@@ -390,19 +351,12 @@ export default function AudioWorkspace() {
 
   const compactTimeline = useMemo(() => {
     if (!visualPlan) return [];
-    const scenes = new Map(visualPlan.scenes.map((scene) => [scene.sceneId, scene]));
-    return visualPlan.timeline.map((clip) => {
-      const scene = scenes.get(clip.sceneId);
-      return {
-        clipId: clip.clipId,
-        startSeconds: clip.startSeconds,
-        endSeconds: clip.endSeconds,
-        narration: clip.narration,
-        visualAsset: scene?.asset ?? '',
-        visualBeat: scene?.shot ?? '',
-        editDirection: clip.direction,
-      };
-    });
+    return visualPlan.timeline.map((clip) => ({
+      clipId: clip.clipId,
+      startSeconds: clip.startSeconds,
+      endSeconds: clip.endSeconds,
+      narration: clip.narration,
+    }));
   }, [visualPlan]);
 
   const persistWorkflow = useCallback((next: WorkflowState) => {
@@ -518,13 +472,7 @@ export default function AudioWorkspace() {
           completionPath: connection.completionPath,
           extraInstructions: direction,
           context: {
-            selectedIdea: selectedIdea ? {
-              title: selectedIdea.title,
-              premise: selectedIdea.premise,
-              region: selectedIdea.region,
-              period: selectedIdea.period,
-              everydayLens: selectedIdea.everydayLens,
-            } : null,
+            selectedIdea: selectedIdea ? { title: selectedIdea.title } : null,
             audioTimeline: compactTimeline,
             audioDurationSeconds: totalDuration,
             audioMode: { mode: audioMode },
@@ -550,8 +498,7 @@ export default function AudioWorkspace() {
         stages: { ...workflow.stages, audio: record, thumbnails: undefined, description: undefined, shorts: undefined },
       };
       if (persistWorkflow(next)) {
-        setVisibleZones(5);
-        setNotice('Complete Audio Plan saved on this device. ' + plan.zones.length + ' precise zones are ready.');
+        setNotice('Complete Audio Plan saved. All ' + plan.zones.length + ' required section' + (plan.zones.length === 1 ? ' is' : 's are') + ' visible from 0:00 to ' + formatTime(totalDuration) + '.');
       }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Audio planning failed. Your saved work is unchanged.');
@@ -569,7 +516,7 @@ export default function AudioWorkspace() {
     }
   }
   function downloadPlan() {
-    if (!audioPlan || !planCurrent) return;
+    if (!audioPlan) return;
     const blob = new Blob([JSON.stringify(audioPlan, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -636,7 +583,7 @@ export default function AudioWorkspace() {
           <section className="audio-builder">
             <header>
               <div><span>AU</span><strong>Audio Plan workspace</strong></div>
-              <div><span>Audio zones</span><strong>{planCurrent ? audioPlan?.zones.length ?? 0 : 0}</strong></div>
+              <div><span>Complete timeline · all sections</span><strong>{audioPlan?.zones.length ?? 0}</strong></div>
             </header>
 
             <div className="audio-model-bar">
@@ -668,6 +615,10 @@ export default function AudioWorkspace() {
             {!handoffReady ? <div className="audio-prerequisite"><span>←</span><div><strong>The current Visual handoff is not ready</strong><p>Finish the current Final Script, Voiceover and complete Visual Plan first. No Audio request will be sent yet.</p></div><Link href="/studio/visuals">Open Visuals</Link></div> : null}
             {error ? <p className="audio-message error" role="alert"><span>!</span>{error}</p> : null}
             {notice ? <p className="audio-message success" role="status"><span>✓</span>{notice}</p> : null}
+            {legacyPlanPreserved ? <p className="audio-message warning" role="status"><span>i</span>An older Audio Plan is preserved but could not be read. Building a new plan will replace it only after usable output is ready.</p> : null}
+            {audioPlan && !coverageComplete ? <p className="audio-message warning" role="status"><span>i</span>This visible saved plan stops at {formatTime(audioPlanEnd)} of {formatTime(totalDuration)}. Nothing is hidden, but build again before continuing so the final result reaches the end.</p> : null}
+            {audioPlan && coverageComplete && !planCurrent ? <p className="audio-message warning" role="status"><span>i</span>This complete Audio Plan is from an older handoff or sound mode. It remains visible below; build again only when you want a current version.</p> : null}
+
 
             <div className="audio-build-row">
               <div><strong>Two-step handoff</strong><span>Visuals only delivered the approved source. Nothing runs until you click this button.</span></div>
@@ -675,52 +626,39 @@ export default function AudioWorkspace() {
             </div>
           </section>
 
-          <section className="audio-rights">
-            <div><span>✓</span><div><p>PRIMARY SOURCE</p><h3>YouTube Audio Library</h3><small>YouTube identifies its own Audio Library music and sound effects as copyright-safe. Use its attribution filter and keep the exact record.</small></div><a href="https://www.youtube.com/audiolibrary" target="_blank" rel="noreferrer">Open Library ↗</a></div>
-            <div><span>!</span><div><p>SECONDARY FOR AMBIENCE + SFX</p><h3>Pixabay</h3><small>Useful for sound effects, but a licence does not guarantee zero Content ID claims. Download only from the official page and preserve proof.</small></div><a href="https://pixabay.com/sound-effects/" target="_blank" rel="noreferrer">Open Sounds ↗</a></div>
-          </section>
-
-          {audioPlan && planCurrent ? (
-            <>
-              <section className="audio-strategy">
-                <header><div><p>SONIC BLUEPRINT</p><h2>One clear sound language</h2></div><span>{audioPlan.mode === 'faith_safe' ? 'Faith-safe · non-musical' : 'Normal · music optional'}</span></header>
-                <div className="audio-strategy-grid">
-                  <article><span>01</span><p>Sonic identity</p><strong>{audioPlan.strategy.sonicIdentity}</strong></article>
-                  <article><span>02</span><p>Story arc</p><strong>{audioPlan.strategy.storyArc}</strong></article>
-                  <article><span>03</span><p>Voice priority</p><strong>{audioPlan.strategy.voicePriority}</strong></article>
-                  <article><span>04</span><p>Silence rule</p><strong>{audioPlan.strategy.silenceRule}</strong></article>
-                </div>
-                <div className="audio-mix-rules"><p>MIXING RULES</p>{audioPlan.strategy.mixRules.map((rule, index) => <span key={index}><i>✓</i>{rule}</span>)}</div>
-              </section>
-
-              <section className="audio-timeline">
-                <header><div><p>COMPLETE PRODUCTION TIMELINE</p><h2>What to use, and exactly when</h2><span>{audioPlan.zones.length} zones · {formatTime(totalDuration)} · narration-first</span></div><div><button type="button" onClick={() => void copyText(JSON.stringify(audioPlan, null, 2), 'Complete Audio Plan copied.')}>Copy all</button><button type="button" onClick={downloadPlan}>Download plan</button></div></header>
-                <div className="audio-zone-list">
-                  {audioPlan.zones.slice(0, visibleZones).map((zone, index) => (
-                    <article className={'audio-zone ' + zone.bedType} key={zone.zoneId}>
-                      <div className="audio-zone-time"><span>{String(index + 1).padStart(2, '0')}</span><strong>{formatTime(zone.startSeconds)}</strong><i>→</i><strong>{formatTime(zone.endSeconds)}</strong><small>{Math.round(zone.endSeconds - zone.startSeconds)} sec</small></div>
-                      <div className="audio-zone-body">
-                        <header><div><p>{zone.zoneId} · {bedLabel(zone.bedType)}</p><h3>{zone.bedDescription}</h3></div><span>{zone.energy}</span></header>
-                        <div className="audio-zone-purpose"><p>Why here</p><strong>{zone.purpose}</strong><small>{zone.mood}</small></div>
-                        {zone.bedType !== 'silence' ? <div className="audio-searches"><p>SEARCH THE OFFICIAL LIBRARY</p>{zone.searchQueries.map((query, queryIndex) => <button type="button" key={queryIndex} onClick={() => void copyText(query, 'Search phrase copied.')}>{query}<span>Copy</span></button>)}<div>{zone.sources.map((source) => <a href={sourceUrl(source)} target="_blank" rel="noreferrer" key={source}>{sourceLabel(source)} ↗</a>)}</div></div> : <div className="audio-silence-note">Do not add a replacement asset here. Preserve the planned silence.</div>}
-                        <div className="audio-edit-grid"><div><p>Entry</p><span>{zone.entry}</span></div><div><p>Under narration</p><span>{zone.voiceMix}</span></div><div><p>Exit</p><span>{zone.exit}</span></div></div>
-                        {zone.accents.length ? <div className="audio-accents"><p>SELECTIVE SOUND ACCENTS</p>{zone.accents.map((accent, accentIndex) => <div key={accentIndex}><b>{formatTime(accent.atSeconds)}</b><span><i>{accentLabel(accent.type)}</i><strong>{accent.sound}</strong><small>{accent.purpose}</small></span><button type="button" onClick={() => void copyText(accent.searchQuery, 'Sound-effect search copied.')}>Copy search</button></div>)}</div> : null}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-                {visibleZones < audioPlan.zones.length ? <button className="audio-show-more" type="button" onClick={() => setVisibleZones(audioPlan.zones.length)}>Show remaining Audio zones <span>{visibleZones} of {audioPlan.zones.length}</span></button> : null}
-              </section>
-
-              <section className="audio-final-check">
-                <div><p>BEFORE YOU EDIT</p><h2>Rights and mix checkpoint</h2><span>{audioPlan.strategy.copyrightRule}</span></div>
-                <ol>{audioPlan.finalChecks.map((check, index) => <li key={index}><span>{index + 1}</span>{check}</li>)}</ol>
-              </section>
-            </>
+          {audioPlan ? (
+            <section className="audio-timeline audio-simple-timeline">
+              <header><div><p>COMPLETE CAPCUT AUDIO TIMELINE</p><h2>Search it, place it, set three values</h2><span>{audioPlan.zones.length} necessary sound section{audioPlan.zones.length === 1 ? '' : 's'} · {formatTime(totalDuration)} total</span></div><div><button type="button" onClick={() => void copyText(JSON.stringify(audioPlan, null, 2), 'Complete Audio Plan copied.')}>Copy all</button><button type="button" onClick={downloadPlan}>Download plan</button></div></header>
+              <div className={'audio-coverage ' + (coverageComplete ? 'complete' : 'partial')}>
+                <span>0:00</span>
+                <div><i><b style={{ width: coveragePercent + '%' }} /></i><strong>{coverageComplete ? '100% of the video is covered' : coveragePercent + '% of the video is covered'}</strong><small>{coverageComplete ? 'All required sound sections are visible below in order.' : 'This saved output stops at ' + formatTime(audioPlanEnd) + '. Build again before moving to the next section.'}</small></div>
+                <span>{coverageComplete ? formatTime(totalDuration) : formatTime(audioPlanEnd) + ' / ' + formatTime(totalDuration)}</span>
+              </div>
+              <div className="audio-zone-list">
+                {audioPlan.zones.map((zone, index) => (
+                  <article className={'audio-zone ' + zone.soundType} key={zone.zoneId}>
+                    <div className="audio-zone-time"><span>{String(index + 1).padStart(2, '0')}</span><small>Section {index + 1} of {audioPlan.zones.length}</small><strong>{formatTime(zone.startSeconds)}</strong><i>→</i><strong>{formatTime(zone.endSeconds)}</strong><small>{Math.round(zone.endSeconds - zone.startSeconds)} sec</small></div>
+                    <div className="audio-zone-body audio-simple-body">
+                      <header><div><p>{zone.zoneId}</p><h3>{bedLabel(zone.soundType)}</h3></div></header>
+                      {zone.soundType === 'silence' ? <div className="audio-silence-note"><strong>No sound needed</strong><span>Leave this section silent from {formatTime(zone.startSeconds)} to {formatTime(zone.endSeconds)}.</span></div> : <>
+                        <div className="audio-searches audio-one-search"><p>1 · TYPE THIS IN THE LIBRARY</p><button type="button" onClick={() => void copyText(zone.searchQuery, 'Search phrase copied.')}>{zone.searchQuery}<span>Copy search</span></button><div><a href={sourceUrl(zone.source)} target="_blank" rel="noreferrer">Open {sourceLabel(zone.source)} ↗</a></div></div>
+                        {zone.capCut ? <div className="audio-capcut-card">
+                          <header><div><p>2 · CAPCUT SETTINGS</p><strong>Select audio clip → Audio → Basic</strong></div><b>CapCut</b></header>
+                          <div>
+                            <article><span>Volume</span><strong>{zone.capCut.volumeDb} dB</strong></article>
+                            <article><span>Fade in</span><strong>{zone.capCut.fadeInSeconds} sec</strong></article>
+                            <article><span>Fade out</span><strong>{zone.capCut.fadeOutSeconds} sec</strong></article>
+                          </div>
+                        </div> : null}
+                      </>}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
           ) : (
-            <section className="audio-empty"><div>♪</div><p>FINAL SCRIPT + VISUAL TIMING READY</p><h2>No Audio Plan request has been sent.</h2><span>Review the handoff, choose the sound policy, then click Build Audio Plan. The result will contain no fabricated track titles.</span></section>
+            <section className="audio-empty"><div>♪</div><p>FINAL SCRIPT + TIMING READY</p><h2>{legacyPlanPreserved ? 'Your older Audio Plan is preserved.' : 'No Audio Plan has been built.'}</h2><span>Click Build Audio Plan. The result will contain only the search phrase, source, volume and fade settings needed in CapCut.</span></section>
           )}
-
           <footer className="audio-next">
             <Link href="/studio/visuals"><span>Previous stage</span><strong>← Visuals</strong></Link>
             <div><span>Current production idea</span><strong>{selectedIdea?.title ?? 'Nothing selected'}</strong></div>
