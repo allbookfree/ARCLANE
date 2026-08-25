@@ -103,11 +103,16 @@ type VisualPlan = {
   scenes: VisualScene[];
   timeline: VisualTimelineEntry[];
 };
+type VisualBuildPartial = {
+  batchIndex: number;
+  parts: VisualPlan[];
+};
 type VisualBuildProgress = {
-  version: 1;
+  version: 2;
   signature: string;
   totalBatches: number;
   batches: VisualPlan[];
+  partial?: VisualBuildPartial;
   updatedAt: string;
 };
 
@@ -120,8 +125,10 @@ const visualProgressStorageKey = 'arclane.visual-build-progress.v1';
 const connectionChangeEvent = 'arclane:model-connections-changed';
 const initialWorkflow: WorkflowState = { stages: {} };
 const visualPlanVersion = 'ARCLANE_VISUAL_PLAN_2026_08_V2' as const;
-const visualBuildProtocol = 'ARCLANE_VISUAL_BUILD_2026_08_V5' as const;
+const visualBuildProtocol = 'ARCLANE_VISUAL_BUILD_2026_08_V6' as const;
 const visualBatchSize = 28;
+const visualRecoveryMinClips = 4;
+const visualRecoveryMaxPasses = 8;
 const strictModestySafeguard = 'Strict modesty lock: if any woman or girl appears, her hair, neck, chest, arms and legs must be fully covered by loose opaque clothing with dignified non-body-emphasizing framing; if that would materially misrepresent the historical record, use a respectful non-identifying or alternative visual instead.';
 const allowedAssets = new Set<VisualAsset>([
   'ai_video', 'archive_or_artifact', 'map_or_diagram', 'stock_footage', 'ai_still_motion',
@@ -558,17 +565,36 @@ function mergeVisualBatches(
 function readVisualBuildProgress(signature: string, totalBatches: number): VisualBuildProgress | null {
   const root = asRecord(readJson<unknown>(visualProgressStorageKey, null));
   const rawBatches = Array.isArray(root.batches) ? root.batches : [];
-  const batches = rawBatches.filter((value): value is VisualPlan => {
+  const isPlan = (value: unknown): value is VisualPlan => {
     const plan = asRecord(value);
     return plan.version === visualPlanVersion && Array.isArray(plan.scenes) && Array.isArray(plan.timeline);
-  });
-  if (root.version !== 1 || root.signature !== signature || root.totalBatches !== totalBatches) return null;
+  };
+  const batches = rawBatches.filter(isPlan);
+  if ((root.version !== 1 && root.version !== 2) || root.signature !== signature || root.totalBatches !== totalBatches) return null;
   if (batches.length !== rawBatches.length || batches.length > totalBatches) return null;
+
+  let partial: VisualBuildPartial | undefined;
+  if (root.version === 2 && root.partial !== undefined) {
+    const rawPartial = asRecord(root.partial);
+    const rawParts = Array.isArray(rawPartial.parts) ? rawPartial.parts : [];
+    const parts = rawParts.filter(isPlan);
+    const batchIndex = typeof rawPartial.batchIndex === 'number' ? Math.trunc(rawPartial.batchIndex) : -1;
+    if (
+      batchIndex < 0
+      || batchIndex >= totalBatches
+      || batchIndex !== batches.length
+      || !parts.length
+      || parts.length !== rawParts.length
+    ) return null;
+    partial = { batchIndex, parts };
+  }
+
   return {
-    version: 1,
+    version: 2,
     signature,
     totalBatches,
     batches,
+    partial,
     updatedAt: typeof root.updatedAt === 'string' ? root.updatedAt : '',
   };
 }
@@ -842,6 +868,8 @@ export default function VisualsWorkspace() {
     const savedProgress = readVisualBuildProgress(signature, manifestBatches.length);
     let completedPlans = savedProgress?.batches ?? [];
     let completedBatchCount = completedPlans.length;
+    let checkpointedPartialClipCount = savedProgress?.partial?.parts
+      .reduce((count, plan) => count + plan.timeline.length, 0) ?? 0;
     const totalBatchCount = manifestBatches.length;
     if (!savedProgress) window.localStorage.removeItem(visualProgressStorageKey);
 
@@ -851,14 +879,37 @@ export default function VisualsWorkspace() {
     try {
       for (let batchIndex = completedPlans.length; batchIndex < manifestBatches.length; batchIndex += 1) {
         const batchManifest = manifestBatches[batchIndex]!;
-        let pendingManifest = [...batchManifest];
-        let requestManifest = [...batchManifest];
-        const recoveredParts: VisualPlan[] = [];
+        const batchClipIds = new Set(batchManifest.map((clip) => clip.clipId));
+        const candidateParts = savedProgress?.partial?.batchIndex === batchIndex
+          ? savedProgress.partial.parts
+          : [];
+        const resumedClipIds = new Set<string>();
+        let resumedPartsSafe = true;
+        for (const plan of candidateParts) {
+          for (const clip of plan.timeline) {
+            if (!batchClipIds.has(clip.clipId) || resumedClipIds.has(clip.clipId)) {
+              resumedPartsSafe = false;
+              break;
+            }
+            resumedClipIds.add(clip.clipId);
+          }
+          if (!resumedPartsSafe) break;
+        }
+        const recoveredParts: VisualPlan[] = resumedPartsSafe ? [...candidateParts] : [];
+        if (!resumedPartsSafe) {
+          resumedClipIds.clear();
+          checkpointedPartialClipCount = 0;
+        }
+        let pendingManifest = batchManifest.filter((clip) => !resumedClipIds.has(clip.clipId));
+        let requestManifest = recoveredParts.length
+          ? pendingManifest.slice(0, Math.min(12, pendingManifest.length))
+          : [...batchManifest];
         let requestPass = 0;
+        let minimalRetryUsed = false;
 
         while (pendingManifest.length) {
           requestPass += 1;
-          if (requestPass > 6) {
+          if (requestPass > visualRecoveryMaxPasses) {
             throw new Error('The selected model could not finish this protected part after automatic missing-clip recovery. Saved earlier parts remain safe; choose a model with a larger structured-output capacity.');
           }
 
@@ -923,6 +974,7 @@ export default function VisualsWorkspace() {
                   index: batchIndex + 1,
                   total: totalBatchCount,
                   sourceMode,
+                  repairMode: requestPass > 1,
                   lockedBible,
                   previousClip: firstRequestIndex > 0 ? manifest[firstRequestIndex - 1] ?? null : null,
                   nextClip: lastRequestIndex >= 0 ? manifest[lastRequestIndex + 1] ?? null : null,
@@ -957,8 +1009,8 @@ export default function VisualsWorkspace() {
               true,
             );
           } catch (parseError) {
-            if (requestManifest.length > 8 && requestPass < 6) {
-              const smallerRequestSize = Math.max(8, Math.ceil(requestManifest.length / 2));
+            if (requestManifest.length > visualRecoveryMinClips && requestPass < visualRecoveryMaxPasses) {
+              const smallerRequestSize = Math.max(visualRecoveryMinClips, Math.ceil(requestManifest.length / 2));
               requestManifest = pendingManifest.slice(0, smallerRequestSize);
               setBuildStatus(
                 'The model response was incomplete; retrying the same unsaved clips automatically in a smaller protected request.',
@@ -966,17 +1018,39 @@ export default function VisualsWorkspace() {
               await new Promise<void>((resolve) => window.setTimeout(resolve, 1800));
               continue;
             }
+            if (!minimalRetryUsed && requestPass < visualRecoveryMaxPasses) {
+              minimalRetryUsed = true;
+              setBuildStatus('The smallest protected request was malformed; retrying it once automatically before stopping.');
+              await new Promise<void>((resolve) => window.setTimeout(resolve, 2200));
+              continue;
+            }
             throw parseError;
           }
+          minimalRetryUsed = false;
           const recoveredIds = new Set(recoveredPlan.timeline.map((entry) => entry.clipId));
           recoveredParts.push(recoveredPlan);
           pendingManifest = pendingManifest.filter((item) => !recoveredIds.has(item.clipId));
+          checkpointedPartialClipCount = batchManifest.length - pendingManifest.length;
+
+          const partialProgress: VisualBuildProgress = {
+            version: 2,
+            signature,
+            totalBatches: totalBatchCount,
+            batches: completedPlans,
+            partial: { batchIndex, parts: recoveredParts },
+            updatedAt: new Date().toISOString(),
+          };
+          try {
+            window.localStorage.setItem(visualProgressStorageKey, JSON.stringify(partialProgress));
+          } catch {
+            throw new Error('This browser could not checkpoint the accepted Visual clips safely. Free some browser storage, then resume.');
+          }
           if (!pendingManifest.length) break;
 
-          const adaptiveRequestSize = Math.max(8, Math.min(14, recoveredPlan.timeline.length + 2));
+          const adaptiveRequestSize = Math.max(visualRecoveryMinClips, Math.min(12, recoveredPlan.timeline.length + 2));
           requestManifest = pendingManifest.slice(0, adaptiveRequestSize);
           setBuildStatus(
-            'The model covered ' + recoveredIds.size + ' clips; keeping them and completing the remaining '
+            'The model covered ' + recoveredIds.size + ' clips; saving them now and completing the remaining '
             + pendingManifest.length + ' automatically.',
           );
           await new Promise<void>((resolve) => window.setTimeout(resolve, 1800));
@@ -987,8 +1061,9 @@ export default function VisualsWorkspace() {
           : mergeVisualBatches(recoveredParts, batchManifest, currentDuration);
         completedPlans = [...completedPlans, batchPlan];
         completedBatchCount = completedPlans.length;
+        checkpointedPartialClipCount = 0;
         const progress: VisualBuildProgress = {
-          version: 1,
+          version: 2,
           signature,
           totalBatches: totalBatchCount,
           batches: completedPlans,
@@ -1046,16 +1121,20 @@ export default function VisualsWorkspace() {
         .replace(/\s+Nothing was replaced[^.]*\./gi, '')
         .trim() || 'The returned Visual Plan part could not be accepted.';
       const providerBusy = /temporarily unavailable|overloaded|rate-limited|quota|did not finish|could not be reached|timed out/i.test(rawMessage);
-      const savedMessage = completedBatchCount
-        ? ' ' + completedBatchCount + ' of ' + totalBatchCount
-          + ' protected parts are already saved. Click Resume Visual Plan; completed parts will not run again.'
+      const savedUnits: string[] = [];
+      if (completedBatchCount) savedUnits.push(completedBatchCount + ' complete protected part' + (completedBatchCount === 1 ? '' : 's'));
+      if (checkpointedPartialClipCount) savedUnits.push(checkpointedPartialClipCount + ' accepted clips inside the current part');
+      const protectedProgress = savedUnits.length > 0;
+      const savedMessage = protectedProgress
+        ? ' ' + savedUnits.join(' and ') + ' are already saved. Click Resume Visual Plan; saved work will not run again.'
         : providerBusy
           ? ' The AI provider is temporarily busy; no saved work changed. Wait about one minute, then try again.'
           : ' The returned part did not pass automatic validation; no saved work changed. Click Build Visual Plan once more.';
       setError(message + savedMessage);
       setBuildStatus(
-        completedBatchCount
-          ? completedBatchCount + ' of ' + totalBatchCount + ' protected parts saved locally'
+        protectedProgress
+          ? completedBatchCount + ' of ' + totalBatchCount + ' complete parts'
+            + (checkpointedPartialClipCount ? ' · ' + checkpointedPartialClipCount + ' current-part clips saved locally' : ' saved locally')
           : '',
       );
     } finally {
@@ -1168,6 +1247,11 @@ export default function VisualsWorkspace() {
               <header><div><p>Episode visual bible</p><h2>{visualPlan.strategy.primaryStyle}</h2><span>{visualPlan.strategy.approach}</span></div><strong>{visualPlan.scenes.length} scenes → {visualPlan.timeline.length} clips</strong></header>
               <div className="visual-bible-grid"><article><span>Colour & texture</span><p>{visualPlan.strategy.palette}</p></article><article><span>Camera language</span><p>{visualPlan.strategy.cameraLanguage}</p></article><article><span>Evidence rule</span><p>{visualPlan.strategy.archiveRule}</p></article><article><span>Verified visual evidence</span><p>{visualPlan.strategy.evidenceLocks.length ? visualPlan.strategy.evidenceLocks.join(' · ') : 'Use only details supported by the Final Script and Research dossier.'}</p></article><article><span>Modest depiction</span><p>{visualPlan.strategy.modestyRule}</p></article><article><span>Publishing note</span><p>{visualPlan.strategy.disclosureNote}</p></article></div>
               {visualPlan.strategy.continuityRules.length ? <div className="visual-rules"><strong>Continuity rules used in every clip</strong><div>{visualPlan.strategy.continuityRules.map((rule) => <span key={rule}>{rule}</span>)}</div></div> : null}
+            </section>
+
+            <section className="visual-publish-safety">
+              <header><div><p>Before the YouTube upload</p><h2>Three safeguards that automation cannot honestly guess.</h2><span>The Visual Plan prepares these decisions, but the final source and upload checks remain attached to the real assets you choose.</span></div><strong>3 FINAL CHECKS</strong></header>
+              <div><article><span>01</span><div><strong>Disclose realistic AI reconstruction</strong><p>Choose “Yes” for altered or synthetic content when a realistic generated scene could be mistaken for a real person, event or place.</p></div></article><article><span>02</span><div><strong>Keep a rights record for every real asset</strong><p>Save the item URL, creator, exact licence, retrieval date and required credit for each archive or stock file you actually download.</p></div></article><article><span>03</span><div><strong>Make every episode visibly original</strong><p>Use narration-specific selection, sequencing, crops, motion, annotation and comparison. Do not publish untouched stock or a repetitive slideshow template.</p></div></article></div>
             </section>
 
             {visualPlan.characters.length ? <section className="visual-characters"><header><div><p>Prepare before generating clips</p><h2>Recurring character reference pack</h2><span>Create these reference images first, then reuse the same reference whenever the character ID appears in a prompt.</span></div><strong>{visualPlan.characters.length} locked</strong></header><div>{visualPlan.characters.map((character) => <article key={character.id}><div><span>{character.id}</span><small>First used {character.firstClipId || 'in this plan'}</small></div><h3>{character.name}</h3><p>{character.role}</p><dl><div><dt>Identity lock</dt><dd>{character.identityLock}</dd></div><div><dt>Reference prompt</dt><dd>{character.referencePrompt}</dd></div></dl><button type="button" onClick={() => void copyText(character.referencePrompt, `${character.id} reference prompt copied.`)}>Copy reference prompt</button></article>)}</div></section> : null}

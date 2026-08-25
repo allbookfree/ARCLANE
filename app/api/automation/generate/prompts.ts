@@ -18,7 +18,7 @@ export type WorkflowContext = {
   visualClipManifest?: unknown;
   visualDuration?: unknown;
   visualModesty?: { mode?: 'evidence_led' | 'strict' };
-  visualBatch?: { index?: number; total?: number; sourceMode?: 'full' | 'locked'; lockedBible?: unknown; previousClip?: unknown; nextClip?: unknown };
+  visualBatch?: { index?: number; total?: number; sourceMode?: 'full' | 'locked'; repairMode?: boolean; lockedBible?: unknown; previousClip?: unknown; nextClip?: unknown };
 };
 
 export const channelSystemPrompt = `You are the editorial production engine for one faceless English-language YouTube channel.
@@ -472,6 +472,7 @@ ${data.script}
       total: data.visualBatch.total ?? 1,
       modestyMode: data.visualModesty.mode,
       sourceMode: firstBatch ? 'full' : 'locked',
+      repairMode: data.visualBatch.repairMode === true,
       lockedBible: firstBatch ? null : data.visualBatch.lockedBible ?? null,
       previousClip: data.visualBatch.previousClip ?? null,
       nextClip: data.visualBatch.nextClip ?? null,
@@ -480,7 +481,7 @@ ${data.script}
       ? `<approved_research>\n${data.research || 'No approved Research dossier was supplied. Use only facts present in the Final Script and keep visual detail restrained.'}\n</approved_research>\n\n<final_script>\n${data.script}\n</final_script>`
       : `<continuation_source>\nThis is a continuation part. The locked Visual Bible inside batch_packet is authoritative. Use the current narration manifest for local meaning; do not ask for or reconstruct the full Script or Research dossier.\n</continuation_source>`;
 
-    return `<protocol>ARCLANE_VISUAL_PLAN_2026_08_V3</protocol>
+    return `<protocol>ARCLANE_VISUAL_PLAN_2026_08_V4</protocol>
 
 <role>
 You are the senior visual director and historical reconstruction editor for Global Everyday History. Build a premium, executable Scene Library and Timeline for every clip in the current fixed manifest. Preserve truth, continuity, dignity and production practicality.
@@ -517,6 +518,7 @@ ${creatorDirection}
 - A later part receives no repeated full Script or Research. Copy lockedBible.strategy exactly, preserve locked character identities exactly, use its evidence and modesty locks, and cover only its current manifest.
 - previousClip and nextClip are boundary context only. They help the first and last shot connect; never return them unless their clipId is also inside fixed_clip_manifest.
 - Return every current manifest clipId exactly once and in order. Do not return narration, timecodes, missing clips, added clips or a continuation offer.
+- When batch_packet.repairMode is true, a previous response was structurally unusable. Prioritize complete minimal JSON, exact manifest IDs and schema compliance over commentary or extra detail; never mention the retry.
 </layered_architecture>
 
 <visual_bible>
@@ -536,6 +538,8 @@ ${creatorDirection}
 - Default to grounded cinematic documentary reconstruction: tactile, human-scale, restrained and historically responsible; not fantasy, glossy game cinematics, tourism advertising, cartoon default or interchangeable AI stock.
 - Choose the strongest medium per beat: ai_video for supported lived action; ai_still_motion for a strong still with restrained motion; archive_or_artifact for real evidence; map_or_diagram for geography or systems; stock_footage for timeless landscape, weather, nature or craft texture.
 - A map, artifact, still or licensed shot is better than weak generated video. Visuals must add information, spatial understanding, emotion or rhythm, not merely illustrate a noun.
+- Make the episode visibly bespoke: vary shot function, scale, angle, movement and evidence type according to the narration. Never produce an interchangeable slideshow or a repeated channel template with only nouns swapped.
+- Stock and archive must be transformed by narration-specific selection and edit direction, such as a meaningful crop, annotation, comparison, motion treatment or juxtaposition; raw third-party footage is never the finished creative work.
 - AI reconstruction is never archive, an exact likeness or a documented event. Keep evidence and reconstruction visibly distinct and include the practical YouTube synthetic-content note.
 </editorial_grammar>
 
@@ -544,8 +548,9 @@ ${creatorDirection}
 - asset must be exactly one of: ai_video, archive_or_artifact, map_or_diagram, stock_footage, ai_still_motion.
 - shot is one clear sentence describing what to create and why it serves the story.
 - prompt is standalone, provider-neutral and production ready, normally 50–90 words; up to 130 only for a selected custom window longer than 15 seconds with a genuine beginning-to-middle-to-end progression.
-- Specify supported subject/action, setting/material culture, shot size/angle, subject and camera motion, light, atmosphere, texture, colour, 16:9 composition, continuity/character locks and one concise risk-specific exclusion. Never name a living artist, studio, competitor or AI model.
+- Specify supported subject/action, setting/material culture, shot size/angle, subject and camera motion, light, atmosphere, texture, colour, 16:9 composition, continuity/character locks and one concise positive risk-control direction. Use direct positive physical wording such as “locked camera” or “fully opaque period clothing”; do not rely on provider-specific negative prompting. Never name a living artist, studio, competitor or AI model.
 - For archive, maps and stock, prompt must be an acquisition/composition/edit direction, not a fake generation prompt. Never claim that an item is free. search contains exactly two short literal discovery queries. note contains one concise continuity, evidence, transition, rights or sensitivity instruction.
+- For every real asset, the note must remind the creator to verify the exact item page and record its URL, creator, licence, retrieval date and required attribution before use.
 - Treat custom duration as a maximum window, not padding. Keep one coherent action or ordered progression; the creator may trim it.
 </scene_rules>
 
@@ -596,7 +601,7 @@ Return an empty characters array when no recurring person is needed. Do not retu
 </output_contract>
 
 <final_quality_gate>
-Silently revise until every manifest ID appears once in order; every referenced scene exists and is used; every scene has two searches; reuse is non-adjacent and no more than three uses; boundary continuity works; evidenceLocks cover the episode's high-risk visual facts; modest depiction is enforced without historical falsification; prompts are executable and materially varied; selected media fit their beats and duration; no unsupported object, costume, ritual, identity, source, URL, license or certainty appears; and the response is one complete valid JSON object. Output only the corrected JSON.
+Silently revise until every manifest ID appears once in order; every referenced scene exists and is used; every scene has two searches; reuse is non-adjacent and no more than three uses; boundary continuity works; evidenceLocks cover the episode's high-risk visual facts; modest depiction is enforced without historical falsification; prompts are executable, positively phrased and materially varied; the episode does not resemble a mass-produced template; selected media fit their beats and duration; no unsupported object, costume, ritual, identity, source, URL, license or certainty appears; and the response is one complete valid JSON object. Output only the corrected JSON.
 </final_quality_gate>`;
   }
   if (stage === 'audio') {
