@@ -678,6 +678,31 @@ export default function VisualsWorkspace() {
     [currentDuration.targetSeconds, voiceRecord?.content],
   );
   const visualPlan = useMemo(() => readSavedPlan(visualsRecord?.content ?? ''), [visualsRecord?.content]);
+  const sceneUsage = useMemo(() => {
+    if (!visualPlan) return [];
+
+    const firstClipByScene = new Map<string, string>();
+    const clipsByScene = new Map<string, string[]>();
+
+    for (const clip of visualPlan.timeline) {
+      if (!firstClipByScene.has(clip.sceneId)) firstClipByScene.set(clip.sceneId, clip.clipId);
+      clipsByScene.set(clip.sceneId, [...(clipsByScene.get(clip.sceneId) ?? []), clip.clipId]);
+    }
+
+    return visualPlan.scenes.map((scene) => ({
+      sceneId: scene.sceneId,
+      firstClipId: firstClipByScene.get(scene.sceneId) ?? '',
+      clipIds: clipsByScene.get(scene.sceneId) ?? [],
+    }));
+  }, [visualPlan]);
+  const reuseGuide = useMemo(() => {
+    if (!visualPlan) return [];
+
+    const firstClipByScene = new Map(sceneUsage.map((usage) => [usage.sceneId, usage.firstClipId]));
+    return visualPlan.timeline
+      .map((clip, index) => ({ ...clip, timelineNumber: index + 1, firstClipId: firstClipByScene.get(clip.sceneId) ?? '' }))
+      .filter((clip) => !clip.firstUse);
+  }, [sceneUsage, visualPlan]);
   const planCurrent = Boolean(
     visualPlan
     && visualsRecord?.sourceScriptUpdatedAt === scriptRecord?.updatedAt
@@ -1151,9 +1176,11 @@ export default function VisualsWorkspace() {
               <header><div><p>Reusable scene library</p><h2>Generate each scene once.</h2><span>Every full production prompt lives here once. A scene may return later only when reuse protects quality and continuity.</span></div><div><button type="button" onClick={downloadPlan}>Download plan</button><button className="primary" type="button" onClick={() => void copyText(JSON.stringify(visualPlan, null, 2), 'Complete Visual Plan copied.')}>Copy all</button></div></header>
               <div className="visual-clip-list">{visualPlan.scenes.slice(0, visibleScenes).map((scene, index) => {
                 const hints = sourceHints(scene.asset);
-                const useCount = visualPlan.timeline.filter((entry) => entry.sceneId === scene.sceneId).length;
+                const usage = sceneUsage.find((entry) => entry.sceneId === scene.sceneId);
+                const useCount = usage?.clipIds.length ?? 0;
                 return <article className="visual-clip visual-scene" id={`scene-${scene.sceneId.toLowerCase()}`} key={scene.sceneId}>
                   <header><div><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{scene.sceneId}</strong><small>{useCount === 1 ? 'Used once' : `Used ${useCount} times in the timeline`}</small></div></div><b className={`asset-${scene.asset}`}>{assetLabel(scene.asset)}</b></header>
+                  {usage?.clipIds.length ? <div className={`visual-scene-usage ${usage.clipIds.length > 1 ? 'has-reuse' : ''}`}><span>{usage.clipIds.length > 1 ? 'Use this same scene in' : 'Use this scene in'}</span><strong>{usage.clipIds.join(' · ')}</strong></div> : null}
                   <section className="visual-shot"><span>What to create</span><p>{scene.shot}</p></section>
                   <section className="visual-prompt"><header><span>Production-ready visual prompt</span><button type="button" onClick={() => void copyText(scene.prompt, `${scene.sceneId} prompt copied.`)}>Copy prompt</button></header><pre>{scene.prompt}</pre></section>
                   <section className="visual-search"><header><span>Real footage / archive alternative</span><button type="button" onClick={() => void copyText(scene.search.join('\n'), `${scene.sceneId} search terms copied.`)}>Copy searches</button></header><div>{scene.search.map((query) => <code key={query}>{query}</code>)}</div>{hints.length ? <small>Good starting points: {hints.join(' · ')}. Verify the exact item’s rights and attribution before use.</small> : <small>Use these terms only when a real or licensed alternative tells the beat better.</small>}</section>
@@ -1165,6 +1192,14 @@ export default function VisualsWorkspace() {
 
             <section className="visual-plan visual-timeline">
               <header><div><p>Complete production timeline</p><h2>Every spoken beat is mapped.</h2><span>Every planned narration block remains here in order at the selected duration. CREATE means make the Scene Library asset; USE means reuse that numbered scene with the stated alternate treatment.</span></div><strong className="visual-plan-count">{visualPlan.scenes.length} scenes → {visualPlan.timeline.length} clips</strong></header>
+              {reuseGuide.length ? <section className="visual-reuse-guide">
+                <header><div><span>Simple reuse guide</span><strong>{reuseGuide.length} clips do not need a new prompt</strong><p>At each clip below, use the named Scene Library asset again. The original prompt stays in that Scene card.</p></div><b>{reuseGuide.length} REUSE</b></header>
+                <div>{reuseGuide.map((clip) => <article key={clip.clipId}>
+                  <span className="visual-reuse-number">Clip {String(clip.timelineNumber).padStart(2, '0')}</span>
+                  <div><strong>{clip.clipId}: use {clip.sceneId} again</strong><p>First created for {clip.firstClipId}. Use it here with this treatment: {clip.direction}</p></div>
+                  <a href={`#scene-${clip.sceneId.toLowerCase()}`}>View {clip.sceneId} prompt</a>
+                </article>)}</div>
+              </section> : <div className="visual-no-reuse"><strong>No scene reuse in this plan.</strong><span>Every timeline clip has its own Scene Library prompt.</span></div>}
               <div className="visual-timeline-list">{visualPlan.timeline.slice(0, visibleClips).map((clip, index) => <article className={`visual-timeline-card ${clip.firstUse ? 'is-new' : 'is-reuse'}`} key={clip.clipId}>
                 <header><div><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{clip.clipId}</strong><small>{formatTime(clip.startSeconds)} — {formatTime(clip.endSeconds)} · {clip.durationSeconds.toFixed(1)} sec</small></div></div><span className="visual-scene-use">{clip.firstUse ? 'CREATE' : 'USE'} {clip.sceneId.replace('SCENE-', 'SCENE ')}</span></header>
                 <blockquote><span>Exact narration</span>{clip.narration}</blockquote>
