@@ -58,10 +58,10 @@ export const studioStages: StudioStage[] = [
     symbol: '▦', tone: 'green', actionLabel: 'Build visual plan', nextPath: '/studio/audio', nextLabel: 'Audio',
   },
   {
-    id: 'audio', number: '06', code: 'AU', title: 'Audio', eyebrow: 'Music and sound direction',
-    description: 'Create a timeline-aware music, ambience, and sound-effects plan without inventing copyrighted tracks.',
-    emptyCopy: 'The approved story and visual rhythm will shape a practical audio direction.',
-    symbol: '♪', tone: 'amber', actionLabel: 'Create audio plan', nextPath: '/studio/thumbnails', nextLabel: 'Thumbnails',
+    id: 'audio', number: '06', code: 'AU', title: 'Audio', eyebrow: 'Background sound timeline',
+    description: 'Turn the approved story rhythm into a precise, narration-first music, ambience, and sound-effects plan.',
+    emptyCopy: 'Review the Visual handoff, choose the sound mode, then build one practical timeline with safe source searches.',
+    symbol: '♪', tone: 'amber', actionLabel: 'Build audio plan', nextPath: '/studio/thumbnails', nextLabel: 'Thumbnails',
   },
   {
     id: 'thumbnails', number: '07', code: 'TH', title: 'Thumbnails', eyebrow: 'Four packaging directions',
