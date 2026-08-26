@@ -45,6 +45,10 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
         <strong>Idea Memory</strong>
       </Link>
 
+      <Link className="module-settings-link" href="/studio/settings#new-video-reset" style={{ marginTop: 2 }}>
+        <span aria-hidden="true">＋</span>
+        <strong>New video</strong>
+      </Link>
       <Link
         className={`module-settings-link${settingsActive ? ' active' : ''}`}
         href="/studio/settings"

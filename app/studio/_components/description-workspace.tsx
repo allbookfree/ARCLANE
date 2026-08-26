@@ -41,6 +41,9 @@ type SelectedThumbnail = {
   id: string;
   conceptName: string;
   headline: string;
+  textMode: 'text_led' | 'text_free';
+  instantRead: string;
+  visualTension: string;
   viewerPromise: string;
   titlePartner: string;
   thumbnailPrompt: string;
@@ -55,30 +58,22 @@ type TitleOption = {
   promise: string;
   thumbnailFit: string;
 };
-type Chapter = { timestamp: string; label: string };
 type DescriptionPlan = {
-  version: 'ARCLANE_UPLOAD_PACKAGE_2026_08_V1';
+  version: 'ARCLANE_UPLOAD_PACKAGE_2026_08_V4';
   recommendedTitleId: string;
-  finalistTitleIds: string[];
   recommendationReason: string;
   titles: TitleOption[];
   description: {
     openingLines: string[];
     body: string;
-    chapters: Chapter[];
-    sourceUrls: string[];
-    aiDisclosure: string;
-    hashtags: string[];
   };
-  pinnedComment: string;
-  searchPhrases: string[];
 };
 
 const workflowStorageKey = 'arclane.creator-workflow.v1';
 const connectionStorageKey = 'arclane.model-connections.v1';
 const modelPreferenceKey = 'arclane.workflow-models.v1';
 const connectionChangeEvent = 'arclane:model-connections-changed';
-const planVersion = 'ARCLANE_UPLOAD_PACKAGE_2026_08_V1' as const;
+const planVersion = 'ARCLANE_UPLOAD_PACKAGE_2026_08_V4' as const;
 const initialWorkflow: WorkflowState = { stages: {} };
 const trafficFits = new Set<TrafficFit>(['browse', 'balanced', 'search']);
 
@@ -137,18 +132,12 @@ function normalizeWords(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-function timestampSeconds(value: string) {
-  const parts = value.split(':').map(Number);
-  if (parts.some((part) => !Number.isFinite(part)) || parts.length < 2 || parts.length > 3) return Number.NaN;
-  return parts.length === 2 ? parts[0] * 60 + parts[1] : parts[0] * 3600 + parts[1] * 60 + parts[2];
-}
-
-function parseDescriptionPlan(content: string, verifiedSources: Source[], thumbnailHeadline: string): DescriptionPlan {
-  const root = parseJsonObject(content, 'Upload Package');
-  if (stringValue(root.version) !== planVersion) throw new Error('The AI returned an outdated Upload Package. Your saved work is unchanged; click Build Upload Package again.');
+function parseDescriptionPlan(content: string, thumbnailHeadline: string): DescriptionPlan {
+  const root = parseJsonObject(content, 'Titles & Description');
+  if (stringValue(root.version) !== planVersion) throw new Error('The AI returned an older format. Your saved work is unchanged; click Create Titles & Description again.');
 
   const rawTitles = Array.isArray(root.titles) ? root.titles : [];
-  if (rawTitles.length !== 12) throw new Error(`The AI returned ${rawTitles.length} title options instead of 12. Your saved work is unchanged; click Build Upload Package again.`);
+  if (rawTitles.length !== 3) throw new Error(`The AI returned ${rawTitles.length} title choices instead of 3. Your saved result is unchanged; try once more.`);
   const titles = rawTitles.map((value, index): TitleOption => {
     const item = asRecord(value);
     const title = stringValue(item.title).replace(/\s+/g, ' ');
@@ -163,74 +152,44 @@ function parseDescriptionPlan(content: string, verifiedSources: Source[], thumbn
       thumbnailFit: stringValue(item.thumbnailFit),
     };
     if (!option.title || option.title.length > 100 || !option.angle || !option.primarySearchPhrase || !option.promise || !option.thumbnailFit) {
-      throw new Error(`Title option ${index + 1} is incomplete or longer than YouTube's 100-character limit. Nothing was replaced.`);
+      throw new Error(`Title choice ${index + 1} is incomplete or longer than YouTube's 100-character limit. Nothing was replaced.`);
     }
-    if (normalizeWords(option.title) === normalizeWords(thumbnailHeadline)) {
-      throw new Error(`Title option ${index + 1} repeats the Thumbnail headline. Nothing was replaced; the title and Thumbnail must complement each other.`);
+    if (thumbnailHeadline && normalizeWords(option.title) === normalizeWords(thumbnailHeadline)) {
+      throw new Error(`Title choice ${index + 1} repeats the Thumbnail headline. Nothing was replaced; the title and Thumbnail must complement each other.`);
     }
     return option;
   });
-  if (new Set(titles.map((item) => normalizeWords(item.title))).size !== 12) {
-    throw new Error('The AI repeated one or more title options. Your saved work is unchanged; click Build Upload Package again.');
+  if (new Set(titles.map((item) => normalizeWords(item.title))).size !== 3) {
+    throw new Error('The AI repeated a title choice. Your saved result is unchanged; try once more.');
   }
 
   const titleIds = new Set(titles.map((item) => item.id));
-  const finalistTitleIds = stringList(root.finalistTitleIds, 3).map((id) => id.toUpperCase()).filter((id) => titleIds.has(id));
-  if (finalistTitleIds.length !== 3 || new Set(finalistTitleIds).size !== 3) {
-    throw new Error('The AI did not choose three valid, different title finalists. Your saved work is unchanged.');
-  }
   const requestedRecommended = stringValue(root.recommendedTitleId).toUpperCase();
-  const recommendedTitleId = finalistTitleIds.includes(requestedRecommended) ? requestedRecommended : finalistTitleIds[0];
+  const recommendedTitleId = titleIds.has(requestedRecommended) ? requestedRecommended : titles[0].id;
 
   const rawDescription = asRecord(root.description);
   const openingLines = stringList(rawDescription.openingLines, 2);
   const body = stringValue(rawDescription.body);
-  if (openingLines.length !== 2 || !body) throw new Error('The public description is incomplete. Your saved work is unchanged; click Build Upload Package again.');
-
-  const rawChapters = Array.isArray(rawDescription.chapters) ? rawDescription.chapters : [];
-  const chapters = rawChapters.map((value) => {
-    const item = asRecord(value);
-    return { timestamp: stringValue(item.timestamp), label: stringValue(item.label) };
-  }).filter((item) => item.timestamp && item.label && Number.isFinite(timestampSeconds(item.timestamp))).slice(0, 8);
-  if (chapters.length < 3 || timestampSeconds(chapters[0].timestamp) !== 0 || chapters.some((chapter, index) => index > 0 && timestampSeconds(chapter.timestamp) <= timestampSeconds(chapters[index - 1].timestamp))) {
-    throw new Error('The AI did not return a valid chapter list beginning at 00:00. Your saved work is unchanged.');
+  const bodyWords = body.split(/\s+/).filter(Boolean).length;
+  if (openingLines.length !== 2 || !body || bodyWords < 70 || bodyWords > 220) {
+    throw new Error('The public description was incomplete or unnecessarily long. Your saved result is unchanged; try once more.');
   }
 
-  const allowedUrls = new Set(verifiedSources.map((source) => source.url));
-  const sourceUrls = stringList(rawDescription.sourceUrls, 6).filter((url) => allowedUrls.has(url));
-  const hashtags = stringList(rawDescription.hashtags, 3).map((tag) => tag.startsWith('#') ? tag : `#${tag.replace(/\s+/g, '')}`);
-  const aiDisclosure = stringValue(rawDescription.aiDisclosure);
-  const pinnedComment = stringValue(root.pinnedComment);
-  const searchPhrases = stringList(root.searchPhrases, 8);
-  if (!aiDisclosure || !pinnedComment || searchPhrases.length < 5) {
-    throw new Error('The Upload Package is missing its disclosure, pinned comment, or private search guide. Nothing was replaced.');
-  }
+  const publicLength = openingLines.join('\n').length + body.length + 2;
+  if (publicLength > 5000) throw new Error("The public description exceeds YouTube's 5,000-character limit. Your saved result is unchanged.");
 
-  const publicLength = openingLines.join('\n').length
-    + body.length
-    + chapters.reduce((total, chapter) => total + chapter.timestamp.length + chapter.label.length + 2, 0)
-    + sourceUrls.reduce((total, url) => total + url.length + 4, 0)
-    + aiDisclosure.length
-    + hashtags.join(' ').length
-    + 48;
-  if (publicLength > 5000) {
-    throw new Error("The public description exceeds YouTube's 5,000-character limit. Your saved work is unchanged.");
-  }
   return {
     version: planVersion,
     recommendedTitleId,
-    finalistTitleIds,
     recommendationReason: stringValue(root.recommendationReason) || 'Strongest truthful balance of clarity, curiosity and selected-Thumbnail fit.',
     titles,
-    description: { openingLines, body, chapters, sourceUrls, aiDisclosure, hashtags },
-    pinnedComment,
-    searchPhrases,
+    description: { openingLines, body },
   };
 }
 
-function readSavedPlan(content: string, sources: Source[], thumbnailHeadline: string) {
+function readSavedPlan(content: string, thumbnailHeadline: string) {
   try {
-    return parseDescriptionPlan(content, sources, thumbnailHeadline);
+    return parseDescriptionPlan(content, thumbnailHeadline);
   } catch {
     return null;
   }
@@ -248,6 +207,9 @@ function readSelectedThumbnail(record: StageRecord | undefined): SelectedThumbna
       id: selectedId,
       conceptName: stringValue(selected.conceptName),
       headline: stringValue(selected.headline),
+      textMode: stringValue(selected.textMode) === 'text_free' ? 'text_free' : 'text_led',
+      instantRead: stringValue(selected.instantRead),
+      visualTension: stringValue(selected.visualTension),
       viewerPromise: stringValue(selected.viewerPromise),
       titlePartner: stringValue(selected.titlePartner),
       thumbnailPrompt: stringValue(selected.thumbnailPrompt),
@@ -264,21 +226,12 @@ function compactDocument(value: string, limit: number) {
   return `${value.slice(0, segment)}\n\n[...middle of document...]\n\n${value.slice(middleStart, middleStart + segment)}\n\n[...ending of document...]\n\n${value.slice(-segment)}`;
 }
 
-function composePublicDescription(plan: DescriptionPlan, sources: Source[]) {
-  const sourceMap = new Map(sources.map((source) => [source.url, source.title]));
-  const chapters = plan.description.chapters.map((chapter) => `${chapter.timestamp} ${chapter.label}`).join('\n');
-  const sourceLines = plan.description.sourceUrls.map((url) => `• ${sourceMap.get(url) || 'Source'}: ${url}`).join('\n');
+function composePublicDescription(plan: DescriptionPlan) {
   return [
     ...plan.description.openingLines,
     '',
     plan.description.body,
-    '',
-    'CHAPTERS',
-    chapters,
-    sourceLines ? `\nSOURCES\n${sourceLines}` : '',
-    `\n${plan.description.aiDisclosure}`,
-    plan.description.hashtags.length ? `\n${plan.description.hashtags.join(' ')}` : '',
-  ].filter((part) => part !== '').join('\n');
+  ].join('\n');
 }
 
 function providerMark(providerId: ProviderId) {
@@ -286,6 +239,12 @@ function providerMark(providerId: ProviderId) {
   if (providerId === 'anthropic') return 'A';
   if (providerId === 'gemini') return 'G';
   return '+';
+}
+
+function trafficLabel(fit: TrafficFit) {
+  if (fit === 'browse') return 'Home feed focused';
+  if (fit === 'search') return 'Search focused';
+  return 'Home + Search';
 }
 
 export default function DescriptionWorkspace() {
@@ -299,30 +258,27 @@ export default function DescriptionWorkspace() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [sourceOpen, setSourceOpen] = useState(false);
-  const [showAllTitles, setShowAllTitles] = useState(false);
 
   const selectedIdea = workflow.selectedIdea;
   const researchRecord = workflow.stages.research;
   const scriptRecord = workflow.stages.scripts;
   const thumbnailRecord = workflow.stages.thumbnails;
   const descriptionRecord = workflow.stages.description;
-  const verifiedSources = useMemo(() => (researchRecord?.sources ?? []).filter((source) => source.title && /^https?:\/\//i.test(source.url)), [researchRecord?.sources]);
   const selectedThumbnail = useMemo(() => readSelectedThumbnail(thumbnailRecord), [thumbnailRecord]);
   const spokenScript = useMemo(() => getSpokenScriptText(scriptRecord?.content ?? ''), [scriptRecord?.content]);
-  const plan = useMemo(() => descriptionRecord?.content ? readSavedPlan(descriptionRecord.content, verifiedSources, selectedThumbnail?.headline ?? '') : null, [descriptionRecord, selectedThumbnail?.headline, verifiedSources]);
+  const plan = useMemo(() => descriptionRecord?.content ? readSavedPlan(descriptionRecord.content, selectedThumbnail?.headline ?? '') : null, [descriptionRecord, selectedThumbnail?.headline]);
   const activeConnection = connections.find((item) => item.providerId === providerId);
   const activeModel = activeConnection?.models.find((item) => item.id === modelId);
   const selectedTitleId = descriptionRecord?.selectedTitleId ?? '';
   const selectedTitle = plan?.titles.find((item) => item.id === selectedTitleId);
-  const finalistTitles = plan?.finalistTitleIds.map((id) => plan.titles.find((item) => item.id === id)).filter((item): item is TitleOption => Boolean(item)) ?? [];
-  const reserveTitles = plan?.titles.filter((item) => !plan.finalistTitleIds.includes(item.id)) ?? [];
+  const finalistTitles = plan?.titles ?? [];
   const handoffReady = Boolean(selectedIdea && researchRecord?.content && scriptRecord?.content && selectedThumbnail);
   const planCurrent = Boolean(plan && descriptionRecord
     && descriptionRecord.sourceIdeaId === selectedIdea?.id
     && descriptionRecord.sourceResearchUpdatedAt === researchRecord?.updatedAt
     && descriptionRecord.sourceScriptUpdatedAt === scriptRecord?.updatedAt
     && descriptionRecord.sourceThumbnailUpdatedAt === thumbnailRecord?.updatedAt);
-  const publicDescription = plan ? composePublicDescription(plan, verifiedSources) : '';
+  const publicDescription = plan ? composePublicDescription(plan) : '';
 
   const persistWorkflow = useCallback((next: WorkflowState) => {
     try {
@@ -330,7 +286,7 @@ export default function DescriptionWorkspace() {
       setWorkflow(next);
       return true;
     } catch {
-      setError('This browser could not save the Upload Package. Download or clear older local data, then try again.');
+      setError('This browser could not save the result. Download or clear older local data, then try again.');
       return false;
     }
   }, []);
@@ -397,13 +353,13 @@ export default function DescriptionWorkspace() {
   async function buildUploadPackage() {
     if (loading) return;
     if (!handoffReady || !selectedIdea || !researchRecord || !scriptRecord || !thumbnailRecord || !selectedThumbnail) {
-      setError('Select one Final Thumbnail direction before building the Upload Package.');
+      setError('Choose one Final Thumbnail before creating Titles & Description.');
       return;
     }
     const connection = connections.find((item) => item.providerId === providerId);
     const model = connection?.models.find((item) => item.id === modelId);
     if (!connection || !model) {
-      setError('Connect an AI provider and choose a capable model before building the Upload Package.');
+      setError('Choose a connected AI provider and model first.');
       return;
     }
     setLoading(true);
@@ -427,7 +383,6 @@ export default function DescriptionWorkspace() {
           context: {
             selectedIdea,
             descriptionThumbnail: selectedThumbnail,
-            descriptionSources: verifiedSources,
             outputs: {
               scripts: compactDocument(spokenScript, 30000),
             },
@@ -435,8 +390,8 @@ export default function DescriptionWorkspace() {
         }),
       });
       const result = await response.json() as { output?: string; error?: string };
-      if (!response.ok || !result.output) throw new Error(result.error || 'The model did not return a usable Upload Package.');
-      const nextPlan = parseDescriptionPlan(result.output, verifiedSources, selectedThumbnail.headline);
+      if (!response.ok || !result.output) throw new Error(result.error || 'The model did not return usable Titles & Description.');
+      const nextPlan = parseDescriptionPlan(result.output, selectedThumbnail.headline);
       const record: StageRecord = {
         content: JSON.stringify(nextPlan, null, 2),
         providerName: connection.providerName,
@@ -450,11 +405,10 @@ export default function DescriptionWorkspace() {
       };
       const next: WorkflowState = { ...workflow, stages: { ...workflow.stages, description: record, shorts: undefined } };
       if (persistWorkflow(next)) {
-        setShowAllTitles(false);
-        setNotice('Upload Package saved. The editorial recommendation is preselected; you can choose any other title.');
+        setNotice('Everything is ready. The recommended title is already selected; change it only if you want.');
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Upload Package generation failed. Your saved work is unchanged.');
+      setError(requestError instanceof Error ? requestError.message : 'Titles & Description could not be created. Your saved result is unchanged.');
     } finally {
       setLoading(false);
     }
@@ -491,7 +445,7 @@ export default function DescriptionWorkspace() {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    setNotice('Complete Upload Package downloaded.');
+    setNotice('Backup downloaded.');
   }
 
   function continueToShorts() {
@@ -503,18 +457,18 @@ export default function DescriptionWorkspace() {
   }
 
   if (!hydrated) {
-    return <main className="module-shell module-blue description-shell"><StudioSidebar activeStageId="description" /><section className="module-main"><div className="description-loading">Loading the Upload Package handoff…</div></section></main>;
+    return <main className="module-shell module-blue description-shell"><StudioSidebar activeStageId="description" /><section className="module-main"><div className="description-loading">Loading your Titles & Description…</div></section></main>;
   }
 
   const titleCard = (option: TitleOption, finalist: boolean) => {
     const recommended = option.id === plan?.recommendedTitleId;
     const selected = option.id === selectedTitleId;
     return <article key={option.id} className={`description-title-card ${recommended ? 'recommended' : ''} ${selected ? 'selected' : ''}`}>
-      <header><div><span>{option.id}</span><b>{option.trafficFit}</b></div>{recommended && <em>Best starting point</em>}</header>
+      <header><div><b>{trafficLabel(option.trafficFit)}</b></div>{recommended && <em>★ Recommended</em>}</header>
       <h3>{option.title}</h3>
-      <small>{option.title.length}/100 characters</small>
-      <dl><div><dt>Viewer entry</dt><dd>{option.angle}</dd></div>{finalist && <><div><dt>Honest promise</dt><dd>{option.promise}</dd></div><div><dt>Works with Thumbnail</dt><dd>{option.thumbnailFit}</dd></div></>}</dl>
-      <footer><button type="button" onClick={() => copyText(option.title, 'Title copied.')}>Copy title</button><button type="button" className="primary" onClick={() => selectTitle(option.id)}>{selected ? '✓ Final title' : 'Choose as Final'}</button></footer>
+      <p className="description-title-match">{option.thumbnailFit}</p>
+      <details><summary>Why this title works <span>＋</span></summary><dl><div><dt>Viewer reason</dt><dd>{option.angle}</dd></div>{finalist && <><div><dt>Promise</dt><dd>{option.promise}</dd></div><div><dt>Likely search phrase</dt><dd>{option.primarySearchPhrase}</dd></div></>}</dl><small>{option.title.length}/100 characters</small></details>
+      <footer><button type="button" onClick={() => copyText(option.title, 'Title copied.')}>Copy</button><button type="button" className="primary" onClick={() => selectTitle(option.id)}>{selected ? '✓ Using this title' : 'Use this title'}</button></footer>
     </article>;
   };
 
@@ -523,57 +477,58 @@ export default function DescriptionWorkspace() {
     <section className="module-main">
       <header className="module-topbar"><div><span>Creator Studio</span><i>/</i><strong>Description</strong></div><div className="module-profile"><span>Local workspace</span><i>YC</i></div></header>
       <div className="module-content description-content">
-        <div className="module-heading description-heading"><div><p>TITLE · DESCRIPTION · CHAPTERS · SOURCES</p><h1>Upload Package</h1><span>Package the approved story for the right viewer—clear, truthful, searchable and ready to copy into YouTube Studio.</span></div><div className="module-number">08<small>/ 09</small></div></div>
+        <div className="module-heading description-heading"><div><p>TITLE · DESCRIPTION · READY TO COPY</p><h1>Titles &amp; Description</h1><span>Create everything you need for the YouTube title and description, then copy it in three simple steps.</span></div><div className="module-number">08<small>/ 09</small></div></div>
 
         <section className={`description-handoff ${handoffReady ? 'ready' : ''}`}>
           <div className="description-handoff-icon">TH</div>
-          <div><p>SELECTED THUMBNAIL HANDOFF</p><h2>{selectedThumbnail?.conceptName || selectedIdea?.title || 'No Final Thumbnail selected'}</h2><span>{selectedThumbnail ? `On-image text: “${selectedThumbnail.headline}”` : 'Return to Thumbnails and choose one Final direction first.'}</span></div>
-          <div className="description-handoff-actions"><button type="button" disabled={!selectedThumbnail} onClick={() => setSourceOpen(true)}>View selected Thumbnail</button><Link href="/studio/thumbnails">← Back to Thumbnails</Link></div>
+          <div><p>YOUR FINAL THUMBNAIL IS ALREADY HERE</p><h2>{selectedThumbnail?.conceptName || selectedIdea?.title || 'No Final Thumbnail selected'}</h2><span>{selectedThumbnail ? 'Nothing to do here. The system will automatically match every title to this Thumbnail.' : 'Return to Thumbnails and choose one Final direction first.'}</span></div>
+          <div className="description-handoff-actions"><button type="button" disabled={!selectedThumbnail} onClick={() => setSourceOpen(true)}>View details</button><Link href="/studio/thumbnails">Change Thumbnail</Link></div>
         </section>
 
-        <section className="description-standard" aria-label="Upload package standard">
-          <div><span>12</span><strong>Title options</strong><small>Three meaningfully different finalists</small></div>
-          <div><span>100</span><strong>Character ceiling</strong><small>YouTube title limit, not a target</small></div>
-          <div><span>2</span><strong>Opening lines</strong><small>Useful before “Show more”</small></div>
-          <div><span>✓</span><strong>Truth before hype</strong><small>No fake volume, ranking or viral claim</small></div>
+        <section className="description-standard" aria-label="Three simple steps">
+          <div className={!plan ? 'current' : 'done'}><span>1</span><strong>Create</strong><small>Click once to make the titles and full description.</small></div>
+          <div className={plan && !selectedTitle ? 'current' : selectedTitle ? 'done' : ''}><span>2</span><strong>Choose a title</strong><small>The recommended title is selected automatically; change it only if you want.</small></div>
+          <div className={selectedTitle ? 'current' : ''}><span>3</span><strong>Copy &amp; publish</strong><small>Copy the Final title and full description into YouTube Studio.</small></div>
         </section>
 
         <section className="description-builder">
-          <header><div><span>DS</span><strong>Upload packaging engine</strong></div><div><span>Output</span><strong>One complete upload package</strong></div></header>
+          <header><div><span>1</span><strong>Create Titles &amp; Description</strong></div><div><span>Action</span><strong>Click once</strong></div></header>
           <div className="description-model-bar">
-            {connections.length ? <><div className="description-provider-tabs">{connections.map((connection) => <button type="button" key={connection.providerId} className={providerId === connection.providerId ? 'active' : ''} onClick={() => changeProvider(connection.providerId)}><i>{providerMark(connection.providerId)}</i><span>{connection.providerName}</span></button>)}</div><label><span>Model</span><select value={modelId} onChange={(event) => changeModel(event.target.value)}>{activeConnection?.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label></> : <div className="description-no-model">No AI provider connected. <Link href="/studio/settings">Add one in Settings →</Link></div>}
+            {connections.length ? <><label><span>AI provider</span><div><b>{providerId ? providerMark(providerId) : '—'}</b><select value={providerId} onChange={(event) => changeProvider(event.target.value as ProviderId)}>{connections.map((connection) => <option value={connection.providerId} key={connection.providerId}>{connection.providerName}</option>)}</select></div></label><label><span>Model for upload packaging</span><div><select value={modelId} onChange={(event) => changeModel(event.target.value)}>{activeConnection?.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></div></label><div className="description-model-note"><i />One focused request</div></> : <div className="description-no-model">No AI provider connected. <Link href="/studio/settings">Add one in Settings →</Link></div>}
           </div>
-          <label className="description-direction"><span>Optional direction</span><textarea value={direction} onChange={(event) => setDirection(event.target.value)} placeholder="Only add a real editorial preference. Leave blank for the automatic best-fit package." /></label>
-          <div className="description-request-note"><span>1 request</span><p>The AI receives the selected Idea, Final Script, selected Thumbnail and verified source URLs. It does not receive Visual or Audio plans because they are not needed here.</p></div>
+          <details className="description-direction"><summary><span>Optional: add a special instruction</span><small>Usually leave this closed</small></summary><label><span>Only write something when you want a specific change.</span><textarea value={direction} onChange={(event) => setDirection(event.target.value)} placeholder="Example: Keep every title calm and documentary-like. Leave blank for automatic best fit." /></label></details>
+          <div className="description-request-note"><span>AUTOMATIC</span><p>Your Final Script and selected Thumbnail are added automatically. Research evidence stays private; no source link is published.</p></div>
           {error && <div className="description-message error"><span>!</span><p>{error}</p></div>}
           {notice && <div className="description-message success"><span>✓</span><p>{notice}</p></div>}
-          <div className="description-build-row"><div><strong>{handoffReady ? 'Ready when you are' : 'Final Thumbnail required'}</strong><span>Opening this page never sends an AI request.</span></div><button type="button" disabled={loading || !handoffReady || !activeModel} onClick={buildUploadPackage}>{loading ? <><i className="description-spinner" /> Building carefully…</> : <>Build Upload Package <span>→</span></>}</button></div>
+          <div className="description-build-row"><div><strong>{handoffReady ? plan ? 'Create a fresh version only when needed' : 'Everything is ready' : 'Final Thumbnail required'}</strong><span>Your saved result changes only after a complete new result passes every check.</span></div><button type="button" disabled={loading || !handoffReady || !activeModel} onClick={buildUploadPackage}>{loading ? <><i className="description-spinner" /> Creating carefully…</> : <>{plan ? 'Create Fresh Version' : 'Create Titles & Description'} <span>→</span></>}</button></div>
         </section>
 
         {plan ? <>
-          {!planCurrent && <div className="description-stale">This older package is preserved, but its source handoff has changed. Build a fresh package before continuing.</div>}
+          {!planCurrent && <div className="description-stale">Your earlier result is safe, but the Thumbnail or Script has changed. Click Create Fresh Version before continuing.</div>}
           <section className="description-titles">
-            <header><div><p>TITLE LAB</p><h2>Three finalists</h2><span>These test three different viewer-entry ideas with the same selected Thumbnail. “Best” is an editorial starting point, not a view guarantee.</span></div><b>{selectedTitle ? 'Final chosen' : 'Choose one Final'}</b></header>
-            <div className="description-recommendation"><span>Why this starts first</span><p>{plan.recommendationReason}</p></div>
+            <header><div><p>STEP 2 · CHOOSE ONE</p><h2>Choose your Final title</h2><span>The starred recommendation is already selected. If you are unsure, simply keep it and continue.</span></div><b>{selectedTitle ? '✓ Final title ready' : 'Choose one title'}</b></header>
+            <div className="description-recommendation"><span>If you are unsure</span><p>Keep the starred title. It is the strongest starting match for your selected Thumbnail. You may choose another one if it sounds better to you.</p></div>
             <div className="description-title-grid finalists">{finalistTitles.map((option) => titleCard(option, true))}</div>
-            <button type="button" className="description-show-more" onClick={() => setShowAllTitles((value) => !value)}>{showAllTitles ? 'Hide the other 9 options' : 'View the other 9 strong options'} <span>{showAllTitles ? '↑' : '↓'}</span></button>
-            {showAllTitles && <div className="description-title-grid reserve">{reserveTitles.map((option) => titleCard(option, false))}</div>}
           </section>
 
           <section className="description-copy">
-            <header><div><p>COPY-READY PUBLIC DESCRIPTION</p><h2>Paste into YouTube Studio</h2><span>Chapter times are careful Script-based estimates. Check them once against the final edited video before publishing.</span></div><div><button type="button" onClick={() => copyText(publicDescription, 'Full public description copied.')}>Copy description</button><button type="button" onClick={downloadPackage}>Download package</button></div></header>
-            <div className="description-opening">{plan.description.openingLines.map((line) => <strong key={line}>{line}</strong>)}</div>
-            <p className="description-body">{plan.description.body}</p>
-            <div className="description-extras"><article><span>Chapters</span>{plan.description.chapters.map((chapter) => <p key={`${chapter.timestamp}-${chapter.label}`}><b>{chapter.timestamp}</b>{chapter.label}</p>)}</article><article><span>Verified sources used</span>{plan.description.sourceUrls.length ? plan.description.sourceUrls.map((url) => <a href={url} target="_blank" rel="noreferrer" key={url}>{verifiedSources.find((source) => source.url === url)?.title || url}</a>) : <p>No verified source URL was available to include.</p>}</article><article><span>AI reconstruction note</span><p>{plan.description.aiDisclosure}</p>{plan.description.hashtags.length > 0 && <p className="description-hashtags">{plan.description.hashtags.join(' ')}</p>}</article></div>
-          </section>
+            <header><div><p>STEP 3 · COPY TWO THINGS</p><h2>Ready for YouTube Studio</h2><span>Copy the Final title into YouTube&apos;s Title box. Then copy the full description into YouTube&apos;s Description box.</span></div></header>
+            <div className="description-ready-grid">
+              <article><span>1 · FINAL TITLE</span><strong>{selectedTitle?.title || 'Choose one title above'}</strong><button type="button" disabled={!planCurrent || !selectedTitle} onClick={() => selectedTitle && copyText(selectedTitle.title, 'Final title copied.')}>Copy Final title</button></article>
+              <article><span>2 · FULL DESCRIPTION</span><p>Two strong opening lines and one concise unique summary are combined in the correct order. No source link is published.</p><button type="button" disabled={!planCurrent} onClick={() => copyText(publicDescription, 'Full public description copied.')}>Copy Full description</button></article>
+            </div>
+            <details className="description-preview"><summary><span>Preview exactly what “Copy Full description” contains</span><b>View</b></summary><div><div className="description-opening">{plan.description.openingLines.map((line) => <strong key={line}>{line}</strong>)}</div><p className="description-body">{plan.description.body}</p></div></details>          </section>
 
-          <section className="description-support"><article><header><div><p>PINNED COMMENT</p><h2>Start a real conversation</h2></div><button type="button" onClick={() => copyText(plan.pinnedComment, 'Pinned comment copied.')}>Copy</button></header><p>{plan.pinnedComment}</p></article><article><header><div><p>PRIVATE SEARCH GUIDE</p><h2>Planning language only</h2></div></header><span>Do not paste this as a keyword block.</span><div>{plan.searchPhrases.map((phrase) => <b key={phrase}>{phrase}</b>)}</div></article></section>
-        </> : <section className="description-empty"><div>≡</div><p>NO UPLOAD PACKAGE YET</p><h2>Your approved story is waiting.</h2><span>Review the selected Thumbnail above, choose the AI model, then click Build Upload Package once. Existing work is never replaced unless the complete new package passes every check.</span></section>}
+          <details className="description-optional">
+            <summary><div><span>BEFORE PUBLISHING</span><strong>Three safety settings—not part of your public Description</strong></div><b>View</b></summary>
+            <div className="description-support"><article><header><div><p>AI DISCLOSURE</p><h2>Use YouTube&apos;s Altered content setting</h2></div></header><p>Choose “Yes” when realistic AI-generated historical scenes could be mistaken for real footage. A sentence in the Description does not replace this setting.</p></article><article><header><div><p>CHAPTERS</p><h2>Keep Automatic chapters enabled</h2></div></header><p>Do not publish guessed timestamps. Add manual chapters only after the final edit provides exact times.</p></article><article><header><div><p>COPYRIGHT</p><h2>Rights must be verified separately</h2></div></header><p>Use only visuals and audio you own or can use commercially. A source link or credit does not grant permission.</p></article><article className="description-backup"><header><div><p>BACKUP</p><h2>Save this result</h2></div><button type="button" onClick={downloadPackage}>Download</button></header><p>Optional JSON backup for this computer. It is not uploaded to YouTube.</p></article></div>
+          </details>
+        </> : <section className="description-empty"><div>≡</div><p>STEP 1</p><h2>Create your Titles &amp; Description</h2><span>Choose the AI model above, then click Create Titles &amp; Description once. Your Script and selected Thumbnail are connected automatically; research evidence stays private.</span></section>}
 
         <section className="description-next"><Link href="/studio/thumbnails"><span>Previous</span><strong>← Thumbnails</strong></Link><div><span>Final title</span><strong>{selectedTitle?.title || 'Choose one title above'}</strong></div><button type="button" disabled={!planCurrent || !selectedTitle} onClick={continueToShorts}><span>Next section</span><strong>Shorts <i>→</i></strong></button></section>
       </div>
     </section>
 
-    {sourceOpen && selectedThumbnail && <div className="description-modal" role="dialog" aria-modal="true" aria-label="Selected Thumbnail direction"><section><header><div><p>SELECTED THUMBNAIL</p><h2>{selectedThumbnail.conceptName}</h2></div><button type="button" onClick={() => setSourceOpen(false)} aria-label="Close">×</button></header><div><article><span>Exact on-image text</span><strong>{selectedThumbnail.headline}</strong></article><article><span>Viewer promise</span><p>{selectedThumbnail.viewerPromise}</p></article><article><span>Title relationship</span><p>{selectedThumbnail.titlePartner}</p></article><article className="wide"><span>Production prompt</span><p>{selectedThumbnail.thumbnailPrompt}</p></article></div></section></div>}
+    {sourceOpen && selectedThumbnail && <div className="description-modal" role="dialog" aria-modal="true" aria-label="Selected Thumbnail direction"><section><header><div><p>SELECTED THUMBNAIL</p><h2>{selectedThumbnail.conceptName}</h2></div><button type="button" onClick={() => setSourceOpen(false)} aria-label="Close">×</button></header><div><article><span>Thumbnail text mode</span><strong>{selectedThumbnail.textMode === 'text_free' ? 'Text-free · visual carries the promise' : `Text-led · “${selectedThumbnail.headline}”`}</strong></article><article><span>One-glance read</span><p>{selectedThumbnail.instantRead || selectedThumbnail.viewerPromise}</p></article><article><span>Visual tension</span><p>{selectedThumbnail.visualTension || selectedThumbnail.viewerPromise}</p></article><article><span>Viewer promise</span><p>{selectedThumbnail.viewerPromise}</p></article><article><span>Title relationship</span><p>{selectedThumbnail.titlePartner}</p></article><article className="wide"><span>Production prompt</span><p>{selectedThumbnail.thumbnailPrompt}</p></article></div></section></div>}
   </main>;
 }

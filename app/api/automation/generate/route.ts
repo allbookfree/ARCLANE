@@ -138,6 +138,9 @@ function providerRequestProfile(stage: AutomationStage): ProviderRequestProfile 
   if (stage === 'research' || stage === 'voiceover') {
     return { timeoutMs: 300000, maxAttempts: 2, taskLabel: labels[stage] };
   }
+  if (stage === 'shorts') {
+    return { timeoutMs: 300000, maxAttempts: 3, taskLabel: labels[stage] };
+  }
   return { timeoutMs: 180000, maxAttempts: 3, taskLabel: labels[stage] };
 }
 

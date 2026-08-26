@@ -47,6 +47,8 @@ type WorkflowState = {
 type ModelPreference = { providerId: ProviderId; modelId: string };
 
 
+type ThumbnailTextMode = 'text_led' | 'text_free';
+type ThumbnailTextPlacement = 'none' | 'top_left' | 'middle_left' | 'bottom_left' | 'top_center' | 'top_right' | 'middle_right';
 type ThumbnailConcept = {
   id: string;
   angleType: string;
@@ -56,8 +58,11 @@ type ThumbnailConcept = {
   audienceBridge: string;
   titlePartner: string;
   testHypothesis: string;
+  instantRead: string;
+  visualTension: string;
+  textMode: ThumbnailTextMode;
   headline: string;
-  textPlacement: 'top_left' | 'middle_left' | 'bottom_left' | 'top_center' | 'top_right' | 'middle_right';
+  textPlacement: ThumbnailTextPlacement;
   textColor: string;
   accentColor: string;
   outlineColor: string;
@@ -74,7 +79,7 @@ type ThumbnailConcept = {
   negativePrompt: string;
 };
 type ThumbnailPlan = {
-  version: 'ARCLANE_THUMBNAIL_PLAN_2026_08_V4';
+  version: 'ARCLANE_THUMBNAIL_PLAN_2026_08_V5';
   recommendedId: string;
   recommendationReason: string;
   migratedFrom?: string;
@@ -85,8 +90,8 @@ const workflowStorageKey = 'arclane.creator-workflow.v1';
 const connectionStorageKey = 'arclane.model-connections.v1';
 const modelPreferenceKey = 'arclane.workflow-models.v1';
 const connectionChangeEvent = 'arclane:model-connections-changed';
-const planVersion = 'ARCLANE_THUMBNAIL_PLAN_2026_08_V4' as const;
-const legacyPlanVersions = new Set(['ARCLANE_THUMBNAIL_PLAN_2026_08_V1', 'ARCLANE_THUMBNAIL_PLAN_2026_08_V2', 'ARCLANE_THUMBNAIL_PLAN_2026_08_V3']);
+const planVersion = 'ARCLANE_THUMBNAIL_PLAN_2026_08_V5' as const;
+const legacyPlanVersions = new Set(['ARCLANE_THUMBNAIL_PLAN_2026_08_V1', 'ARCLANE_THUMBNAIL_PLAN_2026_08_V2', 'ARCLANE_THUMBNAIL_PLAN_2026_08_V3', 'ARCLANE_THUMBNAIL_PLAN_2026_08_V4']);
 const initialWorkflow: WorkflowState = { stages: {} };
 
 function readJson<T>(key: string, fallback: T): T {
@@ -132,11 +137,12 @@ function conciseHeadline(value: unknown) {
   return words.slice(0, 5).join(' ');
 }
 
-const textPlacements = new Set<ThumbnailConcept['textPlacement']>(['top_left', 'middle_left', 'bottom_left', 'top_center', 'top_right', 'middle_right']);
+const textPlacements = new Set<ThumbnailTextPlacement>(['none', 'top_left', 'middle_left', 'bottom_left', 'top_center', 'top_right', 'middle_right']);
 
-function placementValue(value: unknown): ThumbnailConcept['textPlacement'] {
-  const placement = stringValue(value) as ThumbnailConcept['textPlacement'];
-  return textPlacements.has(placement) ? placement : 'top_left';
+function placementValue(value: unknown, textMode: ThumbnailTextMode): ThumbnailTextPlacement {
+  if (textMode === 'text_free') return 'none';
+  const placement = stringValue(value) as ThumbnailTextPlacement;
+  return textPlacements.has(placement) && placement !== 'none' ? placement : 'top_left';
 }
 
 function colorValue(value: unknown, fallback: string) {
@@ -158,6 +164,9 @@ function parseThumbnailPlan(content: string, allowLegacy = false): ThumbnailPlan
 
   const concepts = rawConcepts.map((value, index): ThumbnailConcept => {
     const raw = asRecord(value);
+    const headline = conciseHeadline(raw.headline);
+    const requestedMode = stringValue(raw.textMode) as ThumbnailTextMode;
+    const textMode: ThumbnailTextMode = legacy ? 'text_led' : (requestedMode === 'text_free' || requestedMode === 'text_led' ? requestedMode : (headline ? 'text_led' : 'text_free'));
     const concept: ThumbnailConcept = {
       id: `THUMB-${String(index + 1).padStart(2, '0')}`,
       angleType: stringValue(raw.angleType) || `Direction ${index + 1}`,
@@ -167,12 +176,15 @@ function parseThumbnailPlan(content: string, allowLegacy = false): ThumbnailPlan
       audienceBridge: stringValue(raw.audienceBridge),
       titlePartner: stringValue(raw.titlePartner),
       testHypothesis: stringValue(raw.testHypothesis),
-      headline: conciseHeadline(raw.headline),
-      textPlacement: placementValue(raw.textPlacement),
+      instantRead: stringValue(raw.instantRead),
+      visualTension: stringValue(raw.visualTension),
+      textMode,
+      headline: textMode === 'text_led' ? headline : '',
+      textPlacement: placementValue(raw.textPlacement, textMode),
       textColor: colorValue(raw.textColor, '#FFFFFF'),
       accentColor: colorValue(raw.accentColor, '#F6C453'),
       outlineColor: colorValue(raw.outlineColor, '#160F13'),
-      emphasisWord: stringValue(raw.emphasisWord),
+      emphasisWord: textMode === 'text_led' ? stringValue(raw.emphasisWord) : '',
       textReason: stringValue(raw.textReason),
       subject: stringValue(raw.subject),
       setting: stringValue(raw.setting),
@@ -180,45 +192,49 @@ function parseThumbnailPlan(content: string, allowLegacy = false): ThumbnailPlan
       colorAndLight: stringValue(raw.colorAndLight),
       truthAnchor: stringValue(raw.truthAnchor),
       mobileRead: stringValue(raw.mobileRead),
-      textStyle: stringValue(raw.textStyle),
+      textStyle: textMode === 'text_led' ? stringValue(raw.textStyle) : '',
       thumbnailPrompt: stringValue(raw.thumbnailPrompt) || stringValue(raw.imagePrompt),
       negativePrompt: stringValue(raw.negativePrompt),
     };
     if (legacy) {
       concept.viewerPromise ||= 'The truthful viewing experience described by the selected episode and Final Script.';
       concept.audienceBridge ||= 'A clear human, object or process-led idea that does not require prior regional knowledge.';
-      concept.titlePartner ||= 'Use a concise title that supplies context without repeating the thumbnail.';
-      concept.testHypothesis ||= 'Legacy direction preserved from the previous Thumbnail system.';
+      concept.titlePartner ||= 'Use a concise title that supplies context without repeating the Thumbnail.';
+      concept.testHypothesis ||= 'Legacy text-led direction preserved from the previous Thumbnail system.';
+      concept.instantRead ||= concept.subject || concept.conceptName;
+      concept.visualTension ||= concept.curiosity;
       concept.headline ||= conciseHeadline(concept.conceptName) || 'HIDDEN HISTORY';
-      concept.textPlacement = placementValue(raw.textPlacement);
-      concept.textColor = colorValue(raw.textColor, '#FFFFFF');
-      concept.accentColor = colorValue(raw.accentColor, '#F6C453');
-      concept.outlineColor = colorValue(raw.outlineColor, '#160F13');
+      concept.textPlacement = placementValue(raw.textPlacement, 'text_led');
       concept.emphasisWord ||= concept.headline.split(/\s+/)[0] ?? '';
-      concept.textReason ||= 'Legacy option upgraded with a concise, readable overlay.';
-      concept.textStyle ||= 'Bold condensed sans-serif, uppercase, heavy weight, clean outline and restrained shadow; readable at phone size.';
+      concept.textReason ||= 'Legacy text-led option preserved with a concise, readable overlay.';
+      concept.textStyle ||= 'Bold documentary sans-serif, heavy weight, clean outline or restrained shadow; readable at phone size.';
       if (concept.thumbnailPrompt && !stringValue(raw.thumbnailPrompt)) {
-        concept.thumbnailPrompt = `Create a complete, finished YouTube thumbnail using this visual direction: ${concept.thumbnailPrompt} Include the exact headline text "${concept.headline}" as an intentional part of the composition.`;
+        concept.thumbnailPrompt = `Create a complete, finished YouTube Thumbnail using this visual direction: ${concept.thumbnailPrompt}`;
       }
     }
-    const missing = [concept.conceptName, concept.curiosity, concept.viewerPromise, concept.audienceBridge, concept.titlePartner, concept.testHypothesis, concept.headline, concept.textReason, concept.subject, concept.composition, concept.truthAnchor, concept.mobileRead, concept.textStyle, concept.thumbnailPrompt].some((field) => !field);
-    if (missing || concept.thumbnailPrompt.length < 140) {
+    if (!concept.setting) concept.setting = 'Use the historically supported environment described in the Final Script.';
+    if (!concept.colorAndLight) concept.colorAndLight = 'Strong figure-ground separation, story-appropriate cinematic light and restrained colour contrast.';
+    if (!concept.mobileRead) concept.mobileRead = 'One dominant subject and one immediately understandable visual question at phone-feed size.';
+    if (!concept.negativePrompt) concept.negativePrompt = 'logos, watermark, modern objects, fantasy, gore, sexualized imagery, distorted anatomy, crowded collage, tiny clues, inaccurate clothing, generic stock-photo look';
+
+    const commonMissing = [concept.conceptName, concept.curiosity, concept.viewerPromise, concept.audienceBridge, concept.titlePartner, concept.testHypothesis, concept.instantRead, concept.visualTension, concept.textReason, concept.subject, concept.composition, concept.truthAnchor, concept.mobileRead, concept.thumbnailPrompt].some((field) => !field);
+    if (commonMissing || concept.thumbnailPrompt.length < 160) {
       throw new Error(`Option ${index + 1} is incomplete. Nothing was replaced; click Create 3 Options again or choose another model.`);
     }
-    const headlineWords = concept.headline.toLowerCase().split(/\s+/).filter(Boolean);
-    if (!legacy && (headlineWords.length < 2 || headlineWords.length > 5)) {
-      throw new Error(`Option ${index + 1} needs a clear 2-to-5-word Thumbnail headline. Nothing was replaced; click Create 3 Options again.`);
+
+    if (concept.textMode === 'text_led') {
+      const headlineWords = concept.headline.toLowerCase().split(/\s+/).filter(Boolean);
+      if (!legacy && (headlineWords.length < 1 || headlineWords.length > 5)) {
+        throw new Error(`Option ${index + 1} needs one to five exact Thumbnail words—or must be marked text-free. Nothing was replaced.`);
+      }
+      if (!concept.textStyle) throw new Error(`Option ${index + 1} is missing its text treatment. Nothing was replaced.`);
+      if (!headlineWords.includes(concept.emphasisWord.toLowerCase())) concept.emphasisWord = concept.headline.split(/\s+/)[0] ?? '';
+      const normalizedHeadline = concept.headline.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      const normalizedTitlePartner = concept.titlePartner.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      if (normalizedHeadline && normalizedHeadline === normalizedTitlePartner) {
+        throw new Error(`Option ${index + 1} repeats the same words in its title and Thumbnail. Nothing was replaced; create a complementary pair.`);
+      }
     }
-    if (!headlineWords.includes(concept.emphasisWord.toLowerCase())) concept.emphasisWord = concept.headline.split(/\s+/)[0] ?? '';
-    const normalizedHeadline = concept.headline.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    const normalizedTitlePartner = concept.titlePartner.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    if (normalizedHeadline && normalizedHeadline === normalizedTitlePartner) {
-      throw new Error(`Option ${index + 1} repeats the same words in its title and Thumbnail. Nothing was replaced; create a complementary pair.`);
-    }
-    if (!concept.setting) concept.setting = 'Use the historically supported environment described in the script.';
-    if (!concept.colorAndLight) concept.colorAndLight = 'Strong subject separation, restrained cinematic contrast, readable at mobile size.';
-    if (!concept.mobileRead) concept.mobileRead = 'One dominant subject and one immediately readable visual question at small size.';
-    if (!concept.negativePrompt) concept.negativePrompt = 'extra words, misspelled text, logos, watermark, modern objects, fantasy, gore, sexualized imagery, distorted anatomy, crowded collage, tiny details, inaccurate clothing';
     return concept;
   });
 
@@ -226,13 +242,19 @@ function parseThumbnailPlan(content: string, allowLegacy = false): ThumbnailPlan
   if (distinctKeys.size !== 3) {
     throw new Error('The model repeated a Thumbnail direction. Your previous options are unchanged; create three new options with a capable model.');
   }
+  if (!legacy) {
+    const modes = new Set(concepts.map((concept) => concept.textMode));
+    if (!modes.has('text_free') || !modes.has('text_led')) {
+      throw new Error('The three options must include at least one text-free and one text-led hypothesis. Your previous options are unchanged.');
+    }
+  }
 
   const requestedRecommendation = stringValue(root.recommendedId).toUpperCase();
   const recommendedId = concepts.some((concept) => concept.id === requestedRecommendation) ? requestedRecommendation : concepts[0].id;
   return {
     version: planVersion,
     recommendedId,
-    recommendationReason: stringValue(root.recommendationReason) || 'Best initial balance of truthful curiosity, clarity and mobile readability.',
+    recommendationReason: stringValue(root.recommendationReason) || 'Best initial balance of truthful curiosity, one-glance clarity and selected-story fit.',
     migratedFrom: legacy ? returnedVersion : undefined,
     concepts,
   };
@@ -247,7 +269,6 @@ function readSavedPlan(content: string): ThumbnailPlan | null {
     return null;
   }
 }
-
 function providerMark(providerId: ProviderId) {
   if (providerId === 'openai') return 'O';
   if (providerId === 'anthropic') return 'A';
@@ -400,8 +421,8 @@ export default function ThumbnailWorkspace() {
             selectedIdea,
             visualModesty: { mode: visualRecord?.visualModestyMode === 'strict' ? 'strict' : 'evidence_led' },
             outputs: {
-              research: compactDocument(researchRecord.content, 18000),
-              scripts: compactDocument(spokenScript, 32000),
+              research: compactDocument(researchRecord.content, 9000),
+              scripts: compactDocument(spokenScript, 30000),
             },
           },
         }),
@@ -425,7 +446,7 @@ export default function ThumbnailWorkspace() {
         stages: { ...workflow.stages, thumbnails: record, description: undefined, shorts: undefined },
       };
       if (persistWorkflow(next)) {
-        setNotice('Three complete, text-included Thumbnail prompts are saved. Choose one Final direction below.');
+        setNotice('Three complete text-free/text-led Thumbnail hypotheses are saved. Choose one Final direction below.');
       }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Thumbnail planning failed. Your saved work is unchanged.');
@@ -455,7 +476,10 @@ export default function ThumbnailWorkspace() {
   }
 
   function fullPrompt(concept: ThumbnailConcept) {
-    return `${concept.thumbnailPrompt}\n\nNEGATIVE INSTRUCTIONS: ${concept.negativePrompt}`;
+    const textLock = concept.textMode === 'text_led'
+      ? `TEXT LOCK: Render only this exact on-image headline: "${concept.headline}". Preserve its spelling, capitalization and word order. Do not add any other visible words, letters, numbers, logos or interface text.`
+      : 'TEXT-FREE LOCK: Render no words, letters, numbers, captions, logos, watermarks or interface text anywhere in the Thumbnail. The image must be a complete, compelling visual story—not an unfinished background.';
+    return `${concept.thumbnailPrompt}\n\n${textLock}\n\nNEGATIVE INSTRUCTIONS: ${concept.negativePrompt}`;
   }
 
   function downloadPlan() {
@@ -501,7 +525,7 @@ export default function ThumbnailWorkspace() {
           <section className="thumbnail-standard" aria-label="Thumbnail production standard">
             <div><span>3</span><strong>Different hypotheses</strong><small>Not three recolors of one concept</small></div>
             <div><span>16:9</span><strong>Long-form frame</strong><small>3840 × 2160 production target</small></div>
-            <div><span>2–5</span><strong>Exact overlay words</strong><small>Readable, compelling and never a repeated title</small></div>
+            <div><span>0–5</span><strong>Text only when earned</strong><small>Every set tests text-free and text-led packaging</small></div>
             <div><span>✓</span><strong>Right-viewer fit</strong><small>Truth and viewing satisfaction before raw CTR</small></div>
           </section>
 
@@ -522,9 +546,9 @@ export default function ThumbnailWorkspace() {
           </section>
 
           {plan ? <section className="thumbnail-results">
-            <header><div><p>THREE COMPLETE THUMBNAIL PROMPTS</p><h2>Choose what you will generate</h2><span>Copy one complete prompt into your image model. It already contains the visual, exact text, typography, colour, layout and exclusions—no image upload is needed here.</span></div><div><button type="button" onClick={downloadPlan}>Download plan</button><small>{thumbnailRecord?.providerName} · {thumbnailRecord?.modelName}</small></div></header>
-            {plan.migratedFrom ? <p className="thumbnail-stale"><span>!</span>Your older plan is preserved. Create 3 New Options once to receive the complete text-included V4 Thumbnail prompts.</p> : !planCurrent ? <p className="thumbnail-stale"><span>!</span>This saved plan belongs to older source work. Create three current options before continuing.</p> : null}
-            <div className="thumbnail-use-guide"><span>1</span><p><strong>Copy full Thumbnail prompt</strong>Paste it into your preferred image model. Generate the finished 16:9 Thumbnail with the exact text already included.</p><span>2</span><p><strong>Check the spelling once</strong>If the image model misspells the exact words, regenerate with the same prompt; the website itself does not need your image.</p></div>
+            <header><div><p>THREE COMPLETE THUMBNAIL PROMPTS</p><h2>Choose what you will generate</h2><span>Each prompt is a finished 16:9 direction. Text appears only when it strengthens the idea; every set includes a visual-only option that lets the image carry the promise.</span></div><div><button type="button" onClick={downloadPlan}>Download plan</button><small>{thumbnailRecord?.providerName} · {thumbnailRecord?.modelName}</small></div></header>
+            {plan.migratedFrom ? <p className="thumbnail-stale"><span>!</span>Your older plan is preserved. Create 3 New Options once to receive the current V5 text-free/text-led experiment set.</p> : !planCurrent ? <p className="thumbnail-stale"><span>!</span>This saved plan belongs to older source work. Create three current options before continuing.</p> : null}
+            <div className="thumbnail-use-guide"><span>1</span><p><strong>Generate all three directions</strong>Copy each full prompt into your preferred image model. They test genuinely different viewer-entry ideas, not simple recolours.</p><span>2</span><p><strong>Check at phone size</strong>For text-led options, verify exact spelling. For every option, confirm the subject and visual question remain clear when reduced.</p></div>
             <div className="thumbnail-grid">
               {plan.concepts.map((concept, index) => {
                 const selected = selectedThumbnailId === concept.id;
@@ -532,18 +556,18 @@ export default function ThumbnailWorkspace() {
 
                 const headlineWords = concept.headline.split(/\s+/).filter(Boolean);
                 return <article className={`thumbnail-card${selected ? ' selected' : ''}${recommended ? ' recommended' : ''}`} key={concept.id}>
-                  <div className={`thumbnail-mock ${concept.textPlacement}`} aria-label={`Text and layout blueprint for ${concept.conceptName}`}><span>{String(index + 1).padStart(2, '0')}</span><i /><b style={{ color: concept.textColor, WebkitTextStroke: `1px ${concept.outlineColor}` }}>{headlineWords.map((word, wordIndex) => <em key={`${word}-${wordIndex}`} style={word.replace(/[^a-z0-9]/gi, '').toLowerCase() === concept.emphasisWord.replace(/[^a-z0-9]/gi, '').toLowerCase() ? { color: concept.accentColor } : undefined}>{word}{wordIndex < headlineWords.length - 1 ? ' ' : ''}</em>)}</b><small>TEXT + LAYOUT BLUEPRINT</small></div>
-                  <header><div><p>{concept.angleType}</p><h3>{concept.conceptName}</h3></div>{recommended ? <span>★ Best starting pick</span> : null}</header>
+                  <div className={`thumbnail-mock ${concept.textPlacement} ${concept.textMode}`} aria-label={`${concept.textMode === 'text_led' ? 'Text-led' : 'Text-free'} layout blueprint for ${concept.conceptName}`}><span>{String(index + 1).padStart(2, '0')}</span><i />{concept.textMode === 'text_led' ? <b style={{ color: concept.textColor, WebkitTextStroke: `1px ${concept.outlineColor}` }}>{headlineWords.map((word, wordIndex) => <em key={`${word}-${wordIndex}`} style={word.replace(/[^a-z0-9]/gi, '').toLowerCase() === concept.emphasisWord.replace(/[^a-z0-9]/gi, '').toLowerCase() ? { color: concept.accentColor } : undefined}>{word}{wordIndex < headlineWords.length - 1 ? ' ' : ''}</em>)}</b> : null}<small>{concept.textMode === 'text_led' ? 'TEXT-LED BLUEPRINT' : 'TEXT-FREE BLUEPRINT'}</small></div>
+                  <header><div><p>{concept.angleType}</p><h3>{concept.conceptName}</h3></div><div className="thumbnail-card-badges"><b>{concept.textMode === 'text_led' ? 'Text-led' : 'Text-free'}</b>{recommended ? <span>★ Best starting pick</span> : null}</div></header>
                   <div className="thumbnail-core"><p>THE ONE VISUAL QUESTION</p><strong>{concept.curiosity}</strong><span><b>VIEWER PROMISE</b>{concept.viewerPromise}</span></div>
-                  <div className="thumbnail-package"><div><span>Title partner</span><strong>{concept.titlePartner}</strong></div><div><span>Global audience bridge</span><p>{concept.audienceBridge}</p></div><div><span>What this tests</span><p>{concept.testHypothesis}</p></div></div><dl><div><dt>Dominant subject</dt><dd>{concept.subject}</dd></div><div><dt>Setting</dt><dd>{concept.setting}</dd></div><div><dt>Composition</dt><dd>{concept.composition}</dd></div><div><dt>Color &amp; light</dt><dd>{concept.colorAndLight}</dd></div><div><dt>Truth anchor</dt><dd>{concept.truthAnchor}</dd></div><div><dt>Mobile check</dt><dd>{concept.mobileRead}</dd></div></dl>
-                  <div className="thumbnail-headline"><span>Exact text inside the generated Thumbnail</span><strong>{concept.headline}</strong><small>{concept.textReason}</small><div><b style={{ background: concept.textColor }} /><b style={{ background: concept.accentColor }} /><em>{concept.textPlacement.replaceAll('_', ' ')} · highlight “{concept.emphasisWord}”</em></div><p>{concept.textStyle}</p></div>
+                  <div className="thumbnail-package"><div><span>One-glance read</span><strong>{concept.instantRead}</strong></div><div><span>Visual tension</span><p>{concept.visualTension}</p></div><div><span>Title partner</span><strong>{concept.titlePartner}</strong></div><div><span>Global audience bridge</span><p>{concept.audienceBridge}</p></div><div><span>What this tests</span><p>{concept.testHypothesis}</p></div></div><dl><div><dt>Dominant subject</dt><dd>{concept.subject}</dd></div><div><dt>Setting</dt><dd>{concept.setting}</dd></div><div><dt>Composition</dt><dd>{concept.composition}</dd></div><div><dt>Color &amp; light</dt><dd>{concept.colorAndLight}</dd></div><div><dt>Truth anchor</dt><dd>{concept.truthAnchor}</dd></div><div><dt>Mobile check</dt><dd>{concept.mobileRead}</dd></div></dl>
+                  {concept.textMode === 'text_led' ? <div className="thumbnail-headline"><span>Exact text inside the generated Thumbnail</span><strong>{concept.headline}</strong><small>{concept.textReason}</small><div><b style={{ background: concept.textColor }} /><b style={{ background: concept.accentColor }} /><em>{concept.textPlacement.replaceAll('_', ' ')} · highlight “{concept.emphasisWord}”</em></div><p>{concept.textStyle}</p></div> : <div className="thumbnail-headline text-free"><span>No text inside the generated Thumbnail</span><strong>Visual only</strong><small>{concept.textReason}</small><p>The title supplies the verbal context; this image supplies the subject, tension and curiosity.</p></div>}
                   <details className="thumbnail-prompt"><summary>View complete Thumbnail prompt <span>＋</span></summary><p>{fullPrompt(concept)}</p></details>
                   <div className="thumbnail-card-actions"><button type="button" onClick={() => void copyText(fullPrompt(concept), `${concept.conceptName} complete Thumbnail prompt copied.`)}>Copy full Thumbnail prompt</button><button type="button" className={selected ? 'selected' : 'primary'} disabled={!planCurrent} onClick={() => selectConcept(concept.id)}>{selected ? '✓ Final selected' : 'Select as Final'}</button></div>
                 </article>;
               })}
             </div>
             <div className="thumbnail-recommendation"><span>Editorial starting recommendation</span><strong>{plan.concepts.find((concept) => concept.id === plan.recommendedId)?.conceptName}</strong><p>{plan.recommendationReason}</p><small>This is not a prediction of views. The right viewers&apos; watch-time response—or your deliberate editorial choice—decides the final package.</small></div>
-          </section> : <section className="thumbnail-empty"><div>◩</div><p>STORY SOURCE READY</p><h2>{legacyPlanPreserved ? 'Your older text output is preserved.' : 'No Thumbnail options have been created.'}</h2><span>Click Create 3 Options. You will receive three distinct, script-grounded, complete Thumbnail prompts—each with its exact text, typography, colour and composition included.</span></section>}
+          </section> : <section className="thumbnail-empty"><div>◩</div><p>STORY SOURCE READY</p><h2>{legacyPlanPreserved ? 'Your older text output is preserved.' : 'No Thumbnail options have been created.'}</h2><span>Click Create 3 Options. You will receive three distinct, script-grounded, complete Thumbnail prompts, including both text-free and text-led packaging.</span></section>}
 
           <footer className="thumbnail-next"><Link href="/studio/audio"><span>Previous stage</span><strong>← Audio</strong></Link><div><span>Final direction</span><strong>{selectedConcept?.conceptName ?? 'Choose one option above'}</strong></div><button type="button" disabled={!planCurrent || !selectedConcept || loading} onClick={continueToDescription}><span>{selectedConcept ? 'Final Thumbnail direction saved' : 'Select one Final direction first'}</span><strong>Description <i>→</i></strong></button></footer>
         </div>

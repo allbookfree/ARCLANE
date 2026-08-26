@@ -65,21 +65,21 @@ export const studioStages: StudioStage[] = [
   },
   {
     id: 'thumbnails', number: '07', code: 'TH', title: 'Thumbnails', eyebrow: 'Three test-ready directions',
-    description: 'Create three truthful, materially different, text-included Thumbnail directions with production-ready prompts.',
-    emptyCopy: 'Three complete channel-fit Thumbnail options will appear for comparison and one Final selection.',
+    description: 'Create three truthful, materially different Thumbnail directions that test text-free and text-led packaging with production-ready prompts.',
+    emptyCopy: 'Three complete channel-fit Thumbnail hypotheses will appear for comparison and one Final selection.',
     symbol: '◩', tone: 'pink', actionLabel: 'Create thumbnail options', nextPath: '/studio/description', nextLabel: 'Description',
   },
   {
     id: 'description', number: '08', code: 'DS', title: 'Description', eyebrow: 'Upload metadata',
-    description: 'Prepare twelve truthful titles, three A/B finalists, one copy-ready description, chapters, sources, pinned comment, and AI disclosure.',
-    emptyCopy: 'The Final Script and selected Thumbnail will become one complete, honest YouTube upload package.',
+    description: 'Create three deeply screened, Thumbnail-matched titles and one concise, copy-ready Description with no public source-verification burden.',
+    emptyCopy: 'The Final Script and selected Thumbnail will become three Final title choices and one lean, upload-ready Description.',
     symbol: '≡', tone: 'blue', actionLabel: 'Build upload package', nextPath: '/studio/shorts', nextLabel: 'Shorts',
   },
   {
     id: 'shorts', number: '09', code: 'SH', title: 'Shorts', eyebrow: 'Vertical story adaptations',
-    description: 'Turn the long-form story into three self-contained Shorts with hooks, scripts, and vertical visual prompts.',
-    emptyCopy: 'Three short-form adaptations will be created from the approved long-form story.',
-    symbol: '9:16', tone: 'lime', actionLabel: 'Create three Shorts', nextPath: null, nextLabel: null,
+    description: 'Build up to three genuinely different vertical stories, one complete production package and one AI request at a time.',
+    emptyCopy: 'Choose one slot. Its script, title, visuals, captions and audio will be built together without running the other slots.',
+    symbol: '9:16', tone: 'lime', actionLabel: 'Create one Short', nextPath: null, nextLabel: null,
   },
 ];
 

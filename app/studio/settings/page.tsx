@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import StudioSidebar from '../_components/studio-sidebar';
 import ApiProviderSettings from './api-provider-settings';
+import NewVideoReset from './new-video-reset';
 import ResearchToolSettings from './research-tool-settings';
 
 export const metadata: Metadata = {
@@ -18,7 +19,7 @@ export default function SettingsPage() {
           <div className="module-profile"><span>Workspace 01</span><i>YC</i></div>
         </header>
 
-        <div className="settings-content"><ApiProviderSettings /><ResearchToolSettings /></div>
+        <div className="settings-content"><ApiProviderSettings /><ResearchToolSettings /><NewVideoReset /></div>
       </section>
     </main>
   );
