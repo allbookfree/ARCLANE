@@ -45,6 +45,8 @@ type WorkflowState = {
   stages: Record<string, StageRecord | undefined>;
 };
 type ModelPreference = { providerId: ProviderId; modelId: string };
+
+
 type ThumbnailConcept = {
   id: string;
   angleType: string;
@@ -55,19 +57,27 @@ type ThumbnailConcept = {
   titlePartner: string;
   testHypothesis: string;
   headline: string;
+  textPlacement: 'top_left' | 'middle_left' | 'bottom_left' | 'top_center' | 'top_right' | 'middle_right';
+  textColor: string;
+  accentColor: string;
+  outlineColor: string;
+  emphasisWord: string;
+  textReason: string;
   subject: string;
   setting: string;
   composition: string;
   colorAndLight: string;
   truthAnchor: string;
   mobileRead: string;
-  imagePrompt: string;
+  textStyle: string;
+  thumbnailPrompt: string;
   negativePrompt: string;
 };
 type ThumbnailPlan = {
-  version: 'ARCLANE_THUMBNAIL_PLAN_2026_08_V2';
+  version: 'ARCLANE_THUMBNAIL_PLAN_2026_08_V4';
   recommendedId: string;
   recommendationReason: string;
+  migratedFrom?: string;
   concepts: ThumbnailConcept[];
 };
 
@@ -75,8 +85,8 @@ const workflowStorageKey = 'arclane.creator-workflow.v1';
 const connectionStorageKey = 'arclane.model-connections.v1';
 const modelPreferenceKey = 'arclane.workflow-models.v1';
 const connectionChangeEvent = 'arclane:model-connections-changed';
-const planVersion = 'ARCLANE_THUMBNAIL_PLAN_2026_08_V2' as const;
-const legacyPlanVersion = 'ARCLANE_THUMBNAIL_PLAN_2026_08_V1' as const;
+const planVersion = 'ARCLANE_THUMBNAIL_PLAN_2026_08_V4' as const;
+const legacyPlanVersions = new Set(['ARCLANE_THUMBNAIL_PLAN_2026_08_V1', 'ARCLANE_THUMBNAIL_PLAN_2026_08_V2', 'ARCLANE_THUMBNAIL_PLAN_2026_08_V3']);
 const initialWorkflow: WorkflowState = { stages: {} };
 
 function readJson<T>(key: string, fallback: T): T {
@@ -119,13 +129,25 @@ function parseJsonObject(content: string) {
 
 function conciseHeadline(value: unknown) {
   const words = stringValue(value).replace(/["“”]/g, '').split(/\s+/).filter(Boolean);
-  return words.slice(0, 4).join(' ');
+  return words.slice(0, 5).join(' ');
+}
+
+const textPlacements = new Set<ThumbnailConcept['textPlacement']>(['top_left', 'middle_left', 'bottom_left', 'top_center', 'top_right', 'middle_right']);
+
+function placementValue(value: unknown): ThumbnailConcept['textPlacement'] {
+  const placement = stringValue(value) as ThumbnailConcept['textPlacement'];
+  return textPlacements.has(placement) ? placement : 'top_left';
+}
+
+function colorValue(value: unknown, fallback: string) {
+  const color = stringValue(value).toUpperCase();
+  return /^#[0-9A-F]{6}$/.test(color) ? color : fallback;
 }
 
 function parseThumbnailPlan(content: string, allowLegacy = false): ThumbnailPlan {
   const root = parseJsonObject(content);
   const returnedVersion = stringValue(root.version);
-  const legacy = returnedVersion === legacyPlanVersion;
+  const legacy = legacyPlanVersions.has(returnedVersion);
   if (returnedVersion !== planVersion && !(allowLegacy && legacy)) {
     throw new Error('The model returned an outdated Thumbnail format. Your saved work is unchanged; click Create 3 Options again.');
   }
@@ -146,13 +168,20 @@ function parseThumbnailPlan(content: string, allowLegacy = false): ThumbnailPlan
       titlePartner: stringValue(raw.titlePartner),
       testHypothesis: stringValue(raw.testHypothesis),
       headline: conciseHeadline(raw.headline),
+      textPlacement: placementValue(raw.textPlacement),
+      textColor: colorValue(raw.textColor, '#FFFFFF'),
+      accentColor: colorValue(raw.accentColor, '#F6C453'),
+      outlineColor: colorValue(raw.outlineColor, '#160F13'),
+      emphasisWord: stringValue(raw.emphasisWord),
+      textReason: stringValue(raw.textReason),
       subject: stringValue(raw.subject),
       setting: stringValue(raw.setting),
       composition: stringValue(raw.composition),
       colorAndLight: stringValue(raw.colorAndLight),
       truthAnchor: stringValue(raw.truthAnchor),
       mobileRead: stringValue(raw.mobileRead),
-      imagePrompt: stringValue(raw.imagePrompt),
+      textStyle: stringValue(raw.textStyle),
+      thumbnailPrompt: stringValue(raw.thumbnailPrompt) || stringValue(raw.imagePrompt),
       negativePrompt: stringValue(raw.negativePrompt),
     };
     if (legacy) {
@@ -160,11 +189,27 @@ function parseThumbnailPlan(content: string, allowLegacy = false): ThumbnailPlan
       concept.audienceBridge ||= 'A clear human, object or process-led idea that does not require prior regional knowledge.';
       concept.titlePartner ||= 'Use a concise title that supplies context without repeating the thumbnail.';
       concept.testHypothesis ||= 'Legacy direction preserved from the previous Thumbnail system.';
+      concept.headline ||= conciseHeadline(concept.conceptName) || 'HIDDEN HISTORY';
+      concept.textPlacement = placementValue(raw.textPlacement);
+      concept.textColor = colorValue(raw.textColor, '#FFFFFF');
+      concept.accentColor = colorValue(raw.accentColor, '#F6C453');
+      concept.outlineColor = colorValue(raw.outlineColor, '#160F13');
+      concept.emphasisWord ||= concept.headline.split(/\s+/)[0] ?? '';
+      concept.textReason ||= 'Legacy option upgraded with a concise, readable overlay.';
+      concept.textStyle ||= 'Bold condensed sans-serif, uppercase, heavy weight, clean outline and restrained shadow; readable at phone size.';
+      if (concept.thumbnailPrompt && !stringValue(raw.thumbnailPrompt)) {
+        concept.thumbnailPrompt = `Create a complete, finished YouTube thumbnail using this visual direction: ${concept.thumbnailPrompt} Include the exact headline text "${concept.headline}" as an intentional part of the composition.`;
+      }
     }
-    const missing = [concept.conceptName, concept.curiosity, concept.viewerPromise, concept.audienceBridge, concept.titlePartner, concept.testHypothesis, concept.subject, concept.composition, concept.truthAnchor, concept.mobileRead, concept.imagePrompt].some((field) => !field);
-    if (missing || concept.imagePrompt.length < 100) {
+    const missing = [concept.conceptName, concept.curiosity, concept.viewerPromise, concept.audienceBridge, concept.titlePartner, concept.testHypothesis, concept.headline, concept.textReason, concept.subject, concept.composition, concept.truthAnchor, concept.mobileRead, concept.textStyle, concept.thumbnailPrompt].some((field) => !field);
+    if (missing || concept.thumbnailPrompt.length < 140) {
       throw new Error(`Option ${index + 1} is incomplete. Nothing was replaced; click Create 3 Options again or choose another model.`);
     }
+    const headlineWords = concept.headline.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!legacy && (headlineWords.length < 2 || headlineWords.length > 5)) {
+      throw new Error(`Option ${index + 1} needs a clear 2-to-5-word Thumbnail headline. Nothing was replaced; click Create 3 Options again.`);
+    }
+    if (!headlineWords.includes(concept.emphasisWord.toLowerCase())) concept.emphasisWord = concept.headline.split(/\s+/)[0] ?? '';
     const normalizedHeadline = concept.headline.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
     const normalizedTitlePartner = concept.titlePartner.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
     if (normalizedHeadline && normalizedHeadline === normalizedTitlePartner) {
@@ -173,7 +218,7 @@ function parseThumbnailPlan(content: string, allowLegacy = false): ThumbnailPlan
     if (!concept.setting) concept.setting = 'Use the historically supported environment described in the script.';
     if (!concept.colorAndLight) concept.colorAndLight = 'Strong subject separation, restrained cinematic contrast, readable at mobile size.';
     if (!concept.mobileRead) concept.mobileRead = 'One dominant subject and one immediately readable visual question at small size.';
-    if (!concept.negativePrompt) concept.negativePrompt = 'text, letters, logos, watermark, modern objects, fantasy, gore, sexualized imagery, distorted anatomy, crowded collage, tiny details, inaccurate clothing';
+    if (!concept.negativePrompt) concept.negativePrompt = 'extra words, misspelled text, logos, watermark, modern objects, fantasy, gore, sexualized imagery, distorted anatomy, crowded collage, tiny details, inaccurate clothing';
     return concept;
   });
 
@@ -188,6 +233,7 @@ function parseThumbnailPlan(content: string, allowLegacy = false): ThumbnailPlan
     version: planVersion,
     recommendedId,
     recommendationReason: stringValue(root.recommendationReason) || 'Best initial balance of truthful curiosity, clarity and mobile readability.',
+    migratedFrom: legacy ? returnedVersion : undefined,
     concepts,
   };
 }
@@ -195,7 +241,7 @@ function parseThumbnailPlan(content: string, allowLegacy = false): ThumbnailPlan
 function readSavedPlan(content: string): ThumbnailPlan | null {
   try {
     const root = parseJsonObject(content);
-    if (root.version !== planVersion && root.version !== legacyPlanVersion) return null;
+    if (root.version !== planVersion && !legacyPlanVersions.has(stringValue(root.version))) return null;
     return parseThumbnailPlan(content, true);
   } catch {
     return null;
@@ -228,6 +274,7 @@ export default function ThumbnailWorkspace() {
   const [notice, setNotice] = useState('');
   const [sourceOpen, setSourceOpen] = useState(false);
 
+
   const selectedIdea = workflow.selectedIdea;
   const researchRecord = workflow.stages.research;
   const scriptRecord = workflow.stages.scripts;
@@ -240,7 +287,7 @@ export default function ThumbnailWorkspace() {
   const selectedThumbnailId = thumbnailRecord?.selectedThumbnailId ?? '';
   const selectedConcept = plan?.concepts.find((concept) => concept.id === selectedThumbnailId);
   const handoffReady = Boolean(selectedIdea && researchRecord?.content && scriptRecord?.content && audioRecord?.content);
-  const planCurrent = Boolean(plan && thumbnailRecord
+  const planCurrent = Boolean(plan && !plan.migratedFrom && thumbnailRecord
     && thumbnailRecord.sourceIdeaId === selectedIdea?.id
     && thumbnailRecord.sourceResearchUpdatedAt === researchRecord?.updatedAt
     && thumbnailRecord.sourceScriptUpdatedAt === scriptRecord?.updatedAt
@@ -377,7 +424,9 @@ export default function ThumbnailWorkspace() {
         ...workflow,
         stages: { ...workflow.stages, thumbnails: record, description: undefined, shorts: undefined },
       };
-      if (persistWorkflow(next)) setNotice('Three distinct, test-ready title-and-thumbnail hypotheses are saved. Choose one Final direction below.');
+      if (persistWorkflow(next)) {
+        setNotice('Three complete, text-included Thumbnail prompts are saved. Choose one Final direction below.');
+      }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Thumbnail planning failed. Your saved work is unchanged.');
     } finally {
@@ -406,7 +455,7 @@ export default function ThumbnailWorkspace() {
   }
 
   function fullPrompt(concept: ThumbnailConcept) {
-    return `${concept.imagePrompt}\n\nNegative prompt: ${concept.negativePrompt}`;
+    return `${concept.thumbnailPrompt}\n\nNEGATIVE INSTRUCTIONS: ${concept.negativePrompt}`;
   }
 
   function downloadPlan() {
@@ -452,7 +501,7 @@ export default function ThumbnailWorkspace() {
           <section className="thumbnail-standard" aria-label="Thumbnail production standard">
             <div><span>3</span><strong>Different hypotheses</strong><small>Not three recolors of one concept</small></div>
             <div><span>16:9</span><strong>Long-form frame</strong><small>3840 × 2160 production target</small></div>
-            <div><span>0–4</span><strong>Optional words</strong><small>Readable, complementary—not repeated title</small></div>
+            <div><span>2–5</span><strong>Exact overlay words</strong><small>Readable, compelling and never a repeated title</small></div>
             <div><span>✓</span><strong>Right-viewer fit</strong><small>Truth and viewing satisfaction before raw CTR</small></div>
           </section>
 
@@ -469,29 +518,32 @@ export default function ThumbnailWorkspace() {
             {!handoffReady ? <div className="thumbnail-prerequisite"><span>!</span><div><strong>The production handoff is incomplete</strong><p>Finish Research, Final Script and one current Audio Plan first.</p></div><Link href="/studio/audio">Open Audio</Link></div> : null}
             {error ? <p className="thumbnail-message error" role="alert"><span>!</span>{error}</p> : null}
             {notice ? <p className="thumbnail-message success" role="status"><span>✓</span>{notice}</p> : null}
-            <div className="thumbnail-build-row"><div><strong>{planCurrent ? 'Create a fresh set without risking this one' : 'Ready for three truthful packaging directions'}</strong><span>A new result replaces saved options only after all three pass automatic checks.</span></div><button type="button" disabled={loading || !handoffReady || !activeModel} onClick={() => void buildThumbnailPlan()}>{loading ? <><i className="thumbnail-spinner" /> Designing carefully…</> : <>{planCurrent ? 'Create 3 New Options' : 'Create 3 Options'} <b>→</b></>}</button></div>
+            <div className="thumbnail-build-row"><div><strong>{plan ? 'Create a fresh complete-prompt set without risking this one' : 'Ready for three truthful packaging directions'}</strong><span>A new result replaces saved options only after all three complete Thumbnail prompts pass automatic checks.</span></div><button type="button" disabled={loading || !handoffReady || !activeModel} onClick={() => void buildThumbnailPlan()}>{loading ? <><i className="thumbnail-spinner" /> Designing carefully…</> : <>{plan ? 'Create 3 New Options' : 'Create 3 Options'} <b>→</b></>}</button></div>
           </section>
 
           {plan ? <section className="thumbnail-results">
-            <header><div><p>THREE TEST-READY PACKAGING HYPOTHESES</p><h2>Choose what you will produce</h2><span>Each visual has a complementary title direction. Produce all three when practical, then use YouTube&apos;s native A/B test or your deliberate editorial choice.</span></div><div><button type="button" onClick={downloadPlan}>Download plan</button><small>{thumbnailRecord?.providerName} · {thumbnailRecord?.modelName}</small></div></header>
-            {!planCurrent ? <p className="thumbnail-stale"><span>!</span>This saved plan belongs to older source work. Create three current options before continuing.</p> : null}
+            <header><div><p>THREE COMPLETE THUMBNAIL PROMPTS</p><h2>Choose what you will generate</h2><span>Copy one complete prompt into your image model. It already contains the visual, exact text, typography, colour, layout and exclusions—no image upload is needed here.</span></div><div><button type="button" onClick={downloadPlan}>Download plan</button><small>{thumbnailRecord?.providerName} · {thumbnailRecord?.modelName}</small></div></header>
+            {plan.migratedFrom ? <p className="thumbnail-stale"><span>!</span>Your older plan is preserved. Create 3 New Options once to receive the complete text-included V4 Thumbnail prompts.</p> : !planCurrent ? <p className="thumbnail-stale"><span>!</span>This saved plan belongs to older source work. Create three current options before continuing.</p> : null}
+            <div className="thumbnail-use-guide"><span>1</span><p><strong>Copy full Thumbnail prompt</strong>Paste it into your preferred image model. Generate the finished 16:9 Thumbnail with the exact text already included.</p><span>2</span><p><strong>Check the spelling once</strong>If the image model misspells the exact words, regenerate with the same prompt; the website itself does not need your image.</p></div>
             <div className="thumbnail-grid">
               {plan.concepts.map((concept, index) => {
                 const selected = selectedThumbnailId === concept.id;
                 const recommended = plan.recommendedId === concept.id;
-                return <article className={`thumbnail-card${selected ? ' selected' : ''}`} key={concept.id}>
-                  <div className="thumbnail-mock" aria-label={`Layout blueprint for ${concept.conceptName}`}><span>{String(index + 1).padStart(2, '0')}</span><i /><b>{concept.headline || 'NO TEXT'}</b><small>LAYOUT BLUEPRINT · IMAGE IS GENERATED ELSEWHERE</small></div>
-                  <header><div><p>{concept.angleType}</p><h3>{concept.conceptName}</h3></div>{recommended ? <span>Editorial starting pick</span> : null}</header>
+
+                const headlineWords = concept.headline.split(/\s+/).filter(Boolean);
+                return <article className={`thumbnail-card${selected ? ' selected' : ''}${recommended ? ' recommended' : ''}`} key={concept.id}>
+                  <div className={`thumbnail-mock ${concept.textPlacement}`} aria-label={`Text and layout blueprint for ${concept.conceptName}`}><span>{String(index + 1).padStart(2, '0')}</span><i /><b style={{ color: concept.textColor, WebkitTextStroke: `1px ${concept.outlineColor}` }}>{headlineWords.map((word, wordIndex) => <em key={`${word}-${wordIndex}`} style={word.replace(/[^a-z0-9]/gi, '').toLowerCase() === concept.emphasisWord.replace(/[^a-z0-9]/gi, '').toLowerCase() ? { color: concept.accentColor } : undefined}>{word}{wordIndex < headlineWords.length - 1 ? ' ' : ''}</em>)}</b><small>TEXT + LAYOUT BLUEPRINT</small></div>
+                  <header><div><p>{concept.angleType}</p><h3>{concept.conceptName}</h3></div>{recommended ? <span>★ Best starting pick</span> : null}</header>
                   <div className="thumbnail-core"><p>THE ONE VISUAL QUESTION</p><strong>{concept.curiosity}</strong><span><b>VIEWER PROMISE</b>{concept.viewerPromise}</span></div>
                   <div className="thumbnail-package"><div><span>Title partner</span><strong>{concept.titlePartner}</strong></div><div><span>Global audience bridge</span><p>{concept.audienceBridge}</p></div><div><span>What this tests</span><p>{concept.testHypothesis}</p></div></div><dl><div><dt>Dominant subject</dt><dd>{concept.subject}</dd></div><div><dt>Setting</dt><dd>{concept.setting}</dd></div><div><dt>Composition</dt><dd>{concept.composition}</dd></div><div><dt>Color &amp; light</dt><dd>{concept.colorAndLight}</dd></div><div><dt>Truth anchor</dt><dd>{concept.truthAnchor}</dd></div><div><dt>Mobile check</dt><dd>{concept.mobileRead}</dd></div></dl>
-                  <div className="thumbnail-headline"><span>Optional overlay</span><strong>{concept.headline || 'Use no words'}</strong><small>Add this later in your editor—never bake text into the generated image.</small></div>
-                  <details className="thumbnail-prompt"><summary>Production-ready image prompt <span>＋</span></summary><p>{concept.imagePrompt}</p><div><strong>Negative prompt</strong><span>{concept.negativePrompt}</span></div></details>
-                  <div className="thumbnail-card-actions"><button type="button" onClick={() => void copyText(fullPrompt(concept), `${concept.conceptName} image prompt copied.`)}>Copy image prompt</button><button type="button" className={selected ? 'selected' : 'primary'} disabled={!planCurrent} onClick={() => selectConcept(concept.id)}>{selected ? '✓ Final selected' : 'Select as Final'}</button></div>
+                  <div className="thumbnail-headline"><span>Exact text inside the generated Thumbnail</span><strong>{concept.headline}</strong><small>{concept.textReason}</small><div><b style={{ background: concept.textColor }} /><b style={{ background: concept.accentColor }} /><em>{concept.textPlacement.replaceAll('_', ' ')} · highlight “{concept.emphasisWord}”</em></div><p>{concept.textStyle}</p></div>
+                  <details className="thumbnail-prompt"><summary>View complete Thumbnail prompt <span>＋</span></summary><p>{fullPrompt(concept)}</p></details>
+                  <div className="thumbnail-card-actions"><button type="button" onClick={() => void copyText(fullPrompt(concept), `${concept.conceptName} complete Thumbnail prompt copied.`)}>Copy full Thumbnail prompt</button><button type="button" className={selected ? 'selected' : 'primary'} disabled={!planCurrent} onClick={() => selectConcept(concept.id)}>{selected ? '✓ Final selected' : 'Select as Final'}</button></div>
                 </article>;
               })}
             </div>
             <div className="thumbnail-recommendation"><span>Editorial starting recommendation</span><strong>{plan.concepts.find((concept) => concept.id === plan.recommendedId)?.conceptName}</strong><p>{plan.recommendationReason}</p><small>This is not a prediction of views. The right viewers&apos; watch-time response—or your deliberate editorial choice—decides the final package.</small></div>
-          </section> : <section className="thumbnail-empty"><div>◩</div><p>STORY SOURCE READY</p><h2>{legacyPlanPreserved ? 'Your older text output is preserved.' : 'No Thumbnail options have been created.'}</h2><span>Click Create 3 Options. You will receive three distinct, script-grounded directions—not three recolors of the same idea.</span></section>}
+          </section> : <section className="thumbnail-empty"><div>◩</div><p>STORY SOURCE READY</p><h2>{legacyPlanPreserved ? 'Your older text output is preserved.' : 'No Thumbnail options have been created.'}</h2><span>Click Create 3 Options. You will receive three distinct, script-grounded, complete Thumbnail prompts—each with its exact text, typography, colour and composition included.</span></section>}
 
           <footer className="thumbnail-next"><Link href="/studio/audio"><span>Previous stage</span><strong>← Audio</strong></Link><div><span>Final direction</span><strong>{selectedConcept?.conceptName ?? 'Choose one option above'}</strong></div><button type="button" disabled={!planCurrent || !selectedConcept || loading} onClick={continueToDescription}><span>{selectedConcept ? 'Final Thumbnail direction saved' : 'Select one Final direction first'}</span><strong>Description <i>→</i></strong></button></footer>
         </div>

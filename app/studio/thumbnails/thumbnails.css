@@ -85,6 +85,10 @@
 .thumbnail-results > header small { color: #93898e; font-size: 9px; }
 .thumbnail-stale { display: flex; align-items: center; gap: 9px; margin: 0; padding: 12px 18px; border-bottom: 1px solid #ead9aa; background: #fff8e7; color: #745918; font-size: 11px; }
 .thumbnail-stale span { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: #b7861b; color: #fff; font-weight: 900; }
+.thumbnail-use-guide { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 9px 12px; padding: 13px 18px; border-bottom: 1px solid #e8e1e4; background: #fffafd; }
+.thumbnail-use-guide > span { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #3b2630; color: #fff; font-size: 9px; font-weight: 950; }
+.thumbnail-use-guide p { margin: 0; color: #766b71; font-size: 9px; line-height: 1.45; }
+.thumbnail-use-guide p strong { display: block; margin-bottom: 2px; color: #43353c; font-size: 10px; }
 .thumbnail-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; padding: 16px; background: #f6f3f5; }
 .thumbnail-card { min-width: 0; overflow: hidden; border: 1px solid #e0d8dc; border-radius: 15px; background: #fff; transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
 .thumbnail-card:hover { transform: translateY(-2px); box-shadow: 0 15px 35px rgba(57,31,44,.08); }
@@ -131,6 +135,21 @@
 .thumbnail-prompt > div strong, .thumbnail-prompt > div span { display: block; }
 .thumbnail-prompt > div strong { color: #a23a65; font-size: 8px; text-transform: uppercase; }
 .thumbnail-prompt > div span { margin-top: 5px; color: #776b71; font-size: 9px; line-height: 1.5; }
+.thumbnail-card.recommended:not(.selected) { border-color: #d3a13b; box-shadow: 0 0 0 2px rgba(211,161,59,.13), 0 17px 42px rgba(88,62,18,.1); }
+.thumbnail-card.recommended > header > span { border: 1px solid #e8c66f; background: #fff4cd; color: #78540b; }
+.thumbnail-card.recommended.selected { box-shadow: 0 0 0 2px rgba(197,61,119,.12), 0 0 0 5px rgba(211,161,59,.12), 0 17px 42px rgba(88,50,40,.11); }
+.thumbnail-mock > b { position: absolute; z-index: 2; margin: 0; max-width: 52%; font-family: "Arial Black", Arial, sans-serif; font-style: normal; line-height: .91; }
+.thumbnail-mock > b em { font-style: normal; }
+.thumbnail-mock.top_left > b { top: 15%; bottom: auto; left: 5%; text-align: left; }
+.thumbnail-mock.middle_left > b { top: 50%; bottom: auto; left: 5%; transform: translateY(-50%); text-align: left; }
+.thumbnail-mock.bottom_left > b { bottom: 13%; left: 5%; text-align: left; }
+.thumbnail-mock.top_center > b { top: 12%; bottom: auto; left: 50%; width: 78%; max-width: 78%; transform: translateX(-50%); text-align: center; }
+.thumbnail-mock.top_right > b { top: 15%; right: 5%; bottom: auto; left: auto; text-align: right; }
+.thumbnail-mock.middle_right > b { top: 50%; right: 5%; bottom: auto; left: auto; transform: translateY(-50%); text-align: right; }
+.thumbnail-headline > div { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+.thumbnail-headline > div > b { width: 13px; height: 13px; border: 1px solid rgba(0,0,0,.14); border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+.thumbnail-headline > div > em { margin-left: 3px; color: #7d7077; font-size: 8px; font-style: normal; font-weight: 800; text-transform: capitalize; }
+.thumbnail-headline > p { margin: 9px 0 0; padding-top: 9px; border-top: 1px solid #eadde3; color: #63575d; font-size: 9px; line-height: 1.5; }
 .thumbnail-card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 14px; }
 .thumbnail-card-actions button { min-height: 40px; padding: 0 10px; border: 1px solid #ded5da; border-radius: 9px; background: #fff; color: #4d3f46; cursor: pointer; font-size: 9px; font-weight: 900; }
 .thumbnail-card-actions button.primary { border-color: #38232d; background: #38232d; color: #fff; }
@@ -207,6 +226,7 @@
   .thumbnail-prerequisite, .thumbnail-no-model { grid-template-columns: auto 1fr; }
   .thumbnail-prerequisite a, .thumbnail-no-model a { grid-column: 1 / -1; text-align: center; }
   .thumbnail-grid { padding: 10px; }
+  .thumbnail-use-guide { grid-template-columns: auto minmax(0, 1fr); }
   .thumbnail-card-actions { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {

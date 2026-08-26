@@ -65,14 +65,14 @@ export const studioStages: StudioStage[] = [
   },
   {
     id: 'thumbnails', number: '07', code: 'TH', title: 'Thumbnails', eyebrow: 'Three test-ready directions',
-    description: 'Create three truthful, materially different thumbnail directions with production-ready image prompts.',
-    emptyCopy: 'Three channel-fit options will appear for production, comparison, and one Final selection.',
+    description: 'Create three truthful, materially different, text-included Thumbnail directions with production-ready prompts.',
+    emptyCopy: 'Three complete channel-fit Thumbnail options will appear for comparison and one Final selection.',
     symbol: '◩', tone: 'pink', actionLabel: 'Create thumbnail options', nextPath: '/studio/description', nextLabel: 'Description',
   },
   {
     id: 'description', number: '08', code: 'DS', title: 'Description', eyebrow: 'Upload metadata',
-    description: 'Prepare title options, description, chapters, search language, pinned comment, and AI disclosure.',
-    emptyCopy: 'The finished story will become a complete, honest YouTube upload package.',
+    description: 'Prepare twelve truthful titles, three A/B finalists, one copy-ready description, chapters, sources, pinned comment, and AI disclosure.',
+    emptyCopy: 'The Final Script and selected Thumbnail will become one complete, honest YouTube upload package.',
     symbol: '≡', tone: 'blue', actionLabel: 'Build upload package', nextPath: '/studio/shorts', nextLabel: 'Shorts',
   },
   {
