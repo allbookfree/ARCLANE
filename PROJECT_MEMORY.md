@@ -95,6 +95,13 @@ The Visuals section implementation and local validation are complete. Prepare on
 - Models are fetched after a valid key is supplied; the interface should not invent provider models or endpoints.
 - Generated workflow records, saved idea memory and user preferences currently rely on local storage, so export/import remains important before moving computers or clearing browser data.
 
+## Vercel deployment notes
+
+- Production build uses the Nitro Vercel preset via `NITRO_PRESET=vercel npm run vercel-build`. `vite.config.ts` now sets `vercel.functionRules['/api/**'].maxDuration` from `VERCEL_MAX_DURATION`, defaulting to 60 and clamped between 10 and 300.
+- Root cause of "some options don't work after GitHub → Vercel": Vercel serverless functions default to a 10-second timeout, which silently killed long generation stages (Research, Script, Visuals, Voiceover) while short stages appeared to work locally. Raising `maxDuration` fixes it.
+- On Vercel Hobby (60-second cap) leave `VERCEL_MAX_DURATION` unset or set `60`. On Pro, add project environment variable `VERCEL_MAX_DURATION=300` so the longest stages can finish.
+- No server-side secrets are required: provider API keys live in browser local storage and are sent in the request body to the same-origin `/api/*` routes, which proxy to the providers.
+
 ## Validation record
 
 On 2026-08-25, the interruption recovery, evidence-bound Recheck/timeout improvements and natural-length UI simplification passed targeted linting, TypeScript checking and complete production builds. The local Script route returned HTTP 200, and the `script_review` API stage correctly stopped at missing-model validation without contacting an external AI provider or consuming credits.

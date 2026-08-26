@@ -38,9 +38,29 @@ const localBindingConfig = {
 
 export default defineConfig(async () => {
   if (isVercelBuild) {
+    // Vercel serverless functions default to a 10s timeout, which kills long
+    // AI generation stages (Research/Script/Visuals/Voiceover). Raise it, but
+    // stay within the active plan's limit: Hobby caps at 60s, Pro at 300s.
+    // Override per deployment with VERCEL_MAX_DURATION in the Vercel project
+    // environment (e.g. 300 on Pro). The value is clamped so an unsafe choice
+    // never produces a build-breaking config.
+    const vercelMaxDuration = Math.min(
+      300,
+      Math.max(10, Number(process.env.VERCEL_MAX_DURATION) || 60),
+    );
     return {
       css: { postcss: { plugins: [tailwindcss()] } },
-      plugins: [vinext(), ...nitro({ preset: 'vercel' })],
+      plugins: [
+        vinext(),
+        ...nitro({
+          preset: 'vercel',
+          vercel: {
+            functionRules: {
+              '/api/**': { maxDuration: vercelMaxDuration },
+            },
+          },
+        }),
+      ],
     };
   }
   // Keep Wrangler and Miniflare state project-local. These are non-secret tool
