@@ -3,6 +3,7 @@ export type AutomationStage =
   | 'research'
   | 'scripts'
   | 'script_review'
+  | 'script_translate'
   | 'voiceover'
   | 'visuals'
   | 'audio'
@@ -83,7 +84,7 @@ function compactContext(context: WorkflowContext) {
 
 export function stageMaxTokens(stage: AutomationStage, context?: WorkflowContext) {
   if (stage === 'ideas') return 3200;
-  if (stage === 'scripts' || stage === 'script_review') return 14000;
+  if (stage === 'scripts' || stage === 'script_review' || stage === 'script_translate') return 14000;
   if (stage === 'voiceover') return 14000;
   if (stage === 'visuals') {
     const clipCount = Array.isArray(context?.visualClipManifest) ? context.visualClipManifest.length : 0;
@@ -1099,6 +1100,26 @@ Return only one valid JSON object with no Markdown, prose or extra keys:
 <final_quality_gate>
 Silently revise until the object is valid JSON; it contains only slot ${data.shortSlot}; it is the strongest independently publishable remaining route and does not assume another Short will follow; its angle, hook, title, payoff, sequence and visual route do not cosmetically repeat earlier packages; all factual content comes from the Final Script while connective language remains original and natural; the first second hooks without deception; the viewer receives a complete payoff; timeline voiceover fits natural speech and every second is covered once; every visual is distinct, executable, 9:16, historically responsible and permanently strict-modesty compliant; the 2160x3840 cover is complete, legible, truthful and contains its exact headline; captions are sparse and mobile-safe; audio covers the duration with only non-musical ambience, practical sound, restrained effects or silence; no URL, hashtag, copyrighted asset name, invented fact, non-faith-safe sound or placeholder appears. Output only the corrected object.
 </final_quality_gate>`;
+  }
+  if (stage === 'script_translate') {
+    return `<protocol>ARCLANE_SCRIPT_TRANSLATION_BENGALI_2026</protocol>
+
+<task>
+You are an expert cinematic documentary narrator and master translator specializing in Bengali (বাংলা).
+Translate the following complete English 4-act documentary narration script into natural, captivating, evocative standard Bengali (শুদ্ধ প্রমিত বাংলা).
+</task>
+
+<input_script>
+${data.script || 'No English script found.'}
+</input_script>
+
+<translation_rules>
+1. Translate faithfully into rich, expressive, natural Bengali suitable for high-end historical documentary voiceover.
+2. Maintain the entire 4-Act structure and section headers in Bengali (যেমন: "# প্রথম অঙ্ক: ...", "# দ্বিতীয় অঙ্ক: ...", "# তৃতীয় অঙ্ক: ...", "# চতুর্থ অঙ্ক: ...").
+3. Do NOT make it sound like a literal or robotic machine translation. Use expressive storytelling vocabulary, natural dramatic pauses, rhythm, and clear narrative punch.
+4. Historical names, geographical locations, and Latin/ancient terms should be clearly transliterated into natural Bengali pronunciation.
+5. Output ONLY the translated Bengali documentary script in clean Markdown. Do NOT include introductory greetings, disclaimers, notes, or English metadata.
+</translation_rules>`;
   }
   throw new Error(`Unsupported automation stage: ${stage}`);
 }

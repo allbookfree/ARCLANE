@@ -52,13 +52,14 @@ type WorkflowState = {
   stages: Partial<Record<StudioStageId, StageRecord>>;
 };
 type ModelPreference = { providerId: ProviderId; modelId: string };
-type ScriptOperationCheckpoint = { kind: 'write' | 'review'; startedAt: string };
-type ViewMode = 'read' | 'edit';
+type ScriptOperationCheckpoint = { kind: 'write' | 'review' | 'translate'; startedAt: string };
+type ViewMode = 'read' | 'bengali' | 'edit';
 
 const connectionStorageKey = 'arclane.model-connections.v1';
 const workflowStorageKey = 'arclane.creator-workflow.v1';
 const modelPreferenceKey = 'arclane.workflow-models.v1';
 const scriptOperationKey = 'arclane.script-operation.v1';
+const scriptTranslationKey = 'arclane.script-translation.v1';
 const connectionChangeEvent = 'arclane:model-connections-changed';
 const initialWorkflow: WorkflowState = { stages: {} };
 const downstreamStages: StudioStageId[] = ['voiceover', 'visuals', 'audio', 'thumbnails', 'description', 'shorts'];
@@ -113,11 +114,12 @@ export default function ScriptWorkspace() {
   const [providerId, setProviderId] = useState<ProviderId | ''>('');
   const [modelId, setModelId] = useState('');
   const [draft, setDraft] = useState('');
+  const [bengaliDraft, setBengaliDraft] = useState('');
   const [direction, setDirection] = useState('');
   const [researchOpen, setResearchOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('read');
   const [loading, setLoading] = useState(false);
-  const [requestKind, setRequestKind] = useState<'write' | 'review' | ''>('');
+  const [requestKind, setRequestKind] = useState<'write' | 'review' | 'translate' | ''>('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const requestInFlight = useRef(false);
@@ -175,12 +177,14 @@ export default function ScriptWorkspace() {
     const available = readConnections();
     const preference = readJson<Partial<Record<StudioStageId, ModelPreference>>>(modelPreferenceKey, {}).scripts;
     const interruptedOperation = readJson<ScriptOperationCheckpoint | null>(scriptOperationKey, null);
+    const savedBengali = readJson<string>(scriptTranslationKey, '');
     const preferredConnection = available.find((item) => item.providerId === preference?.providerId) ?? available[0];
     const preferredModel = preferredConnection?.models.find((model) => model.id === preference?.modelId) ?? preferredConnection?.models[0];
     // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate external browser-local state
     setConnections(available);
     setWorkflow({ ...savedWorkflow, stages: savedWorkflow.stages ?? {} });
     setDraft(savedWorkflow.stages?.scripts?.content ?? '');
+    setBengaliDraft(savedBengali);
     setProviderId(preferredConnection?.providerId ?? '');
     setModelId(preferredModel?.id ?? '');
     window.localStorage.removeItem('arclane.script-duration.v1');
@@ -480,6 +484,90 @@ export default function ScriptWorkspace() {
     setNotice('Current Script downloaded as a Markdown document.');
   }
 
+  const translateScript = useCallback(async () => {
+    if (requestInFlight.current) {
+      setNotice('A request is already running. No duplicate request was sent.');
+      return;
+    }
+    const connection = connections.find((item) => item.providerId === providerId);
+    const model = connection?.models.find((item) => item.id === modelId);
+    if (!connection || !model) {
+      setError('Connect an AI provider and choose a model before translating.');
+      return;
+    }
+    if (!draft.trim()) {
+      setError('Write the English Script before translating.');
+      return;
+    }
+
+    requestInFlight.current = true;
+    setLoading(true);
+    setRequestKind('translate');
+    setError('');
+    setNotice('বাংলায় অনুবাদ করা হচ্ছে (Translating full 4-act script to Bengali)…');
+    try {
+      const response = await fetch('/api/automation/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stage: 'script_translate',
+          provider: connection.providerId,
+          providerName: connection.providerName,
+          model: model.id,
+          apiKey: connection.apiKey,
+          baseUrl: connection.baseUrl,
+          authMethod: connection.authMethod,
+          headerName: connection.headerName,
+          completionPath: connection.completionPath,
+          webSearchEnabled: false,
+          context: {
+            outputs: { scripts: draft },
+          },
+        }),
+      });
+      const result = (await response.json()) as { output?: string; attempts?: number; error?: string };
+      if (!response.ok || !result.output?.trim()) {
+        throw new Error(result.error || 'অনুবাদ সম্পন্ন করা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।');
+      }
+
+      const translated = normalizeScriptMarkdown(result.output);
+      setBengaliDraft(translated);
+      window.localStorage.setItem(scriptTranslationKey, JSON.stringify(translated));
+      setViewMode('bengali');
+      setNotice('✓ স্ক্রিপ্ট সফলভাবে বাংলায় অনুবাদ করা হয়েছে! আপনি নিচে উভয় ভাষায় পর্যালোচনা করতে পারেন।');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'অনুবাদ ব্যর্থ হয়েছে। আবার চেষ্টা করুন।');
+    } finally {
+      requestInFlight.current = false;
+      setLoading(false);
+      setRequestKind('');
+    }
+  }, [connections, draft, modelId, providerId]);
+
+  async function copyBengaliScript() {
+    try {
+      await navigator.clipboard.writeText(normalizeScriptMarkdown(bengaliDraft));
+      setNotice('বাংলা স্ক্রিপ্ট ক্লিপবোর্ডে কপি করা হয়েছে।');
+      setError('');
+    } catch {
+      setError('ক্লিপবোর্ড পারমিশন পাওয়া যায়নি।');
+    }
+  }
+
+  function downloadBengaliScript() {
+    if (!bengaliDraft.trim()) return;
+    const blob = new Blob([normalizeScriptMarkdown(bengaliDraft)], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `arclane-script-bengali-${new Date().toISOString().slice(0, 10)}.md`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setNotice('বাংলা স্ক্রিপ্ট ফাইল ডাউনলোড সম্পন্ন হয়েছে।');
+  }
+
   function restoreOriginal() {
     if (!activeRecord || !originalDraft.trim() || !window.confirm('Use the Original Draft instead? It will become the current Script, and you can polish it again whenever you want.')) return;
     const record: StageRecord = {
@@ -515,7 +603,6 @@ export default function ScriptWorkspace() {
     }
     studioNavigate('/studio/voiceover');
   }
-
 
   return (
     <main className="module-shell module-coral script-shell">
@@ -585,9 +672,94 @@ export default function ScriptWorkspace() {
             <section className="script-output">
               <header><div><p>{reviewApproved ? 'Reviewed Script' : 'Production Draft'}</p><h2>{reviewApproved ? 'The final story, approved for voice.' : 'The story, ready for its final check.'}</h2><span>{dirty ? 'Unsaved edits' : `Saved ${new Date(activeRecord.updatedAt).toLocaleString()}`}</span></div><div className="script-output-meta"><span className={finalReady ? 'ready' : 'repair'}>{finalReady ? '✓ Final Script approved' : '↻ Recheck required'}</span><small>Writer: {activeRecord.providerName} · {activeRecord.modelName}</small></div></header>
 
-              <div className="script-viewbar"><div><button className={viewMode === 'read' ? 'active' : ''} type="button" onClick={() => setViewMode('read')}>Read Script</button><button className={viewMode === 'edit' ? 'active' : ''} type="button" onClick={() => setViewMode('edit')}>Edit text</button></div><span>{signals.wordCount.toLocaleString()} spoken words · about {signals.estimatedMinutes} minutes · information only</span></div>
-              {viewMode === 'read' ? <ScriptDocumentView content={draft} /> : <textarea className="script-editor" aria-label="Script editor" spellCheck value={draft} onChange={(event) => setDraft(event.target.value)} />}
-              <footer className="script-actions"><div><span>{dirty ? 'Changes not saved' : finalReady ? 'Final version saved locally' : 'Draft saved locally · Recheck required'}</span><small>{finalReady ? 'Voiceover will receive this exact reviewed version.' : 'Editing the Script means it should be polished again before Voiceover.'}</small></div><button type="button" disabled={!dirty} onClick={() => saveDraft()}>Save edits</button><button type="button" onClick={() => void copyScript()}>Copy</button><button type="button" onClick={downloadScript}>Download .md</button><button className="primary" type="button" disabled={loading || !researchReady || !activeModel} onClick={() => void generateScript()}>{loading && requestKind === 'write' ? 'Writing…' : 'New Draft'}</button></footer>
+              <div className="script-viewbar">
+                <div>
+                  <button className={viewMode === 'read' ? 'active' : ''} type="button" onClick={() => setViewMode('read')}>
+                    English Script
+                  </button>
+                  <button className={viewMode === 'bengali' ? 'active' : ''} type="button" onClick={() => setViewMode('bengali')}>
+                    বাংলা অনুবাদ {bengaliDraft ? '✓' : ''}
+                  </button>
+                  <button className={viewMode === 'edit' ? 'active' : ''} type="button" onClick={() => setViewMode('edit')}>
+                    Edit text
+                  </button>
+                </div>
+                <span>{signals.wordCount.toLocaleString()} spoken words · about {signals.estimatedMinutes} minutes · information only</span>
+              </div>
+
+              {viewMode === 'read' ? (
+                <ScriptDocumentView content={draft} />
+              ) : viewMode === 'bengali' ? (
+                bengaliDraft ? (
+                  <div>
+                    <div className="script-bengali-banner">
+                      <div>
+                        <strong>✓ বাংলা অনুবাদ প্রিভিউ (Bengali Translation)</strong>
+                        <span>ডকুমেন্টারি ভয়েসওভার ও স্টোরিটেলিং অনুধাবনের জন্য তৈরি</span>
+                      </div>
+                      <div className="script-bengali-actions">
+                        <button type="button" className="script-bengali-retranslate" disabled={loading} onClick={() => void translateScript()}>
+                          {loading && requestKind === 'translate' ? 'অনুবাদ হচ্ছে…' : 'পুনরায় অনুবাদ করুন'}
+                        </button>
+                      </div>
+                    </div>
+                    <ScriptDocumentView content={bengaliDraft} />
+                  </div>
+                ) : (
+                  <div className="script-translation-card">
+                    <div className="script-translation-header">
+                      <span className="script-translation-badge">বাংলা প্রিভিউ (BENGALI TRANSLATION)</span>
+                      <h3>স্ক্রিপ্ট বাংলা অনুবাদ ও প্রিভিউ</h3>
+                      <p>ইংরেজি ৪-অ্যাক্ট স্ক্রিপ্টটিকে স্বয়ংক্রিয়ভাবে স্বাভাবিক, চিত্তাকর্ষক ডকুমেন্টারি বাংলায় রূপান্তর করে পড়ে দেখুন।</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="script-translate-btn"
+                      disabled={loading || !draft.trim() || !activeModel}
+                      onClick={() => void translateScript()}
+                    >
+                      {loading && requestKind === 'translate' ? (
+                        <><i className="automation-spinner" /> অনুবাদ করা হচ্ছে…</>
+                      ) : (
+                        <>বাংলায় অনুবাদ করুন (Translate to Bengali) ➔</>
+                      )}
+                    </button>
+                  </div>
+                )
+              ) : (
+                <textarea className="script-editor" aria-label="Script editor" spellCheck value={draft} onChange={(event) => setDraft(event.target.value)} />
+              )}
+
+              <footer className="script-actions">
+                <div>
+                  <span>{dirty ? 'Changes not saved' : finalReady ? 'Final version saved locally' : 'Draft saved locally · Recheck required'}</span>
+                  <small>{finalReady ? 'Voiceover will receive this exact reviewed version.' : 'Editing the Script means it should be polished again before Voiceover.'}</small>
+                </div>
+                {viewMode === 'bengali' && bengaliDraft ? (
+                  <>
+                    <button type="button" onClick={() => void copyBengaliScript()}>Copy বাংলা</button>
+                    <button type="button" onClick={downloadBengaliScript}>Download বাংলা .md</button>
+                  </>
+                ) : null}
+                <button type="button" disabled={!dirty} onClick={() => saveDraft()}>Save edits</button>
+                <button type="button" onClick={() => void copyScript()}>Copy English</button>
+                <button type="button" onClick={downloadScript}>Download .md</button>
+                <button
+                  type="button"
+                  className={viewMode === 'bengali' ? 'primary' : ''}
+                  disabled={loading || !draft.trim()}
+                  onClick={() => {
+                    if (bengaliDraft) {
+                      setViewMode(viewMode === 'bengali' ? 'read' : 'bengali');
+                    } else {
+                      void translateScript();
+                    }
+                  }}
+                >
+                  {loading && requestKind === 'translate' ? 'অনুবাদ হচ্ছে…' : bengaliDraft ? (viewMode === 'bengali' ? 'View English' : 'বাংলা অনুবাদ প্রিভিউ') : 'বাংলা অনুবাদ প্রিভিউ'}
+                </button>
+                <button className="primary" type="button" disabled={loading || !researchReady || !activeModel} onClick={() => void generateScript()}>{loading && requestKind === 'write' ? 'Writing…' : 'New Draft'}</button>
+              </footer>
             </section>
 
             <section className={`script-recheck${finalReady ? ' approved' : ''}`}>

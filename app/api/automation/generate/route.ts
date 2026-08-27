@@ -43,7 +43,7 @@ class ProviderRequestError extends Error {
 }
 
 const validStages = new Set<AutomationStage>([
-  'ideas', 'research', 'scripts', 'script_review', 'voiceover', 'visuals',
+  'ideas', 'research', 'scripts', 'script_review', 'script_translate', 'voiceover', 'visuals',
   'audio', 'thumbnails', 'description', 'shorts',
 ]);
 const blockedHosts = new Set(['localhost', '0.0.0.0', '127.0.0.1', '::1']);
@@ -119,6 +119,7 @@ function providerRequestProfile(stage: AutomationStage): ProviderRequestProfile 
     research: 'Research',
     scripts: 'Script Draft',
     script_review: 'Script Recheck',
+    script_translate: 'Script Translation',
     voiceover: 'Voiceover preparation',
     visuals: 'Visual planning',
     audio: 'Audio planning',
@@ -132,7 +133,7 @@ function providerRequestProfile(stage: AutomationStage): ProviderRequestProfile 
     // retries with jitter.
     return { timeoutMs: 360000, maxAttempts: 4, taskLabel: labels[stage] };
   }
-  if (stage === 'scripts' || stage === 'script_review') {
+  if (stage === 'scripts' || stage === 'script_review' || stage === 'script_translate') {
     return { timeoutMs: 360000, maxAttempts: 2, taskLabel: labels[stage] };
   }
   if (stage === 'research' || stage === 'voiceover') {
