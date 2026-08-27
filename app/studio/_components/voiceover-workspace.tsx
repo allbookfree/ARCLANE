@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { StudioStageId } from '../_lib/stages';
 import ScriptDocumentView, { getScriptSignals, getSpokenScriptText } from './script-document-view';
@@ -395,11 +394,11 @@ export default function VoiceoverWorkspace() {
                 <span>{scriptPreview || 'No spoken narration preview is available.'}</span>
                 <small>{scriptSignals.wordCount.toLocaleString()} spoken words · about {scriptSignals.estimatedMinutes} minutes · {scriptRecord.providerName} · {scriptRecord.modelName}</small>
               </div>
-              <div className="voice-handoff-actions"><button type="button" aria-expanded={scriptOpen} onClick={() => setScriptOpen((open) => !open)}>{scriptOpen ? 'Hide full Script' : 'View full Script'}</button><Link href="/studio/scripts">Back to Script</Link></div>
+              <div className="voice-handoff-actions"><button type="button" aria-expanded={scriptOpen} onClick={() => setScriptOpen((open) => !open)}>{scriptOpen ? 'Hide full Script' : 'View full Script'}</button><a href="/studio/scripts">Back to Script</a></div>
               {scriptOpen ? <div className="voice-source-full"><ScriptDocumentView content={scriptRecord.content} /></div> : null}
             </> : <>
               <div className="voice-handoff-copy"><div><p>Final Script required</p></div><h2>No Script has arrived yet</h2><span>Write and polish the Script first. Voiceover never starts automatically.</span></div>
-              <Link href="/studio/scripts">Open Script →</Link>
+              <a href="/studio/scripts">Open Script →</a>
             </>}
           </section>
 
@@ -410,7 +409,7 @@ export default function VoiceoverWorkspace() {
               <label><span>AI that prepares the text</span><div><b>{providerId ? providerMark(providerId) : '—'}</b><select value={providerId} onChange={(event) => changeProvider(event.target.value as ProviderId)}>{connections.map((connection) => <option value={connection.providerId} key={connection.providerId}>{connection.providerName}</option>)}</select></div></label>
               <label><span>Model for this one request</span><div><select value={modelId} onChange={(event) => changeModel(event.target.value)}>{activeConnection?.models.map((model) => <option value={model.id} key={model.id}>{model.name}</option>)}</select></div></label>
               <div className="voice-model-note"><i /><span><strong>Formatting model only</strong><small>You will paste its result into your voice tool</small></span></div>
-            </div> : <div className="voice-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Connect one text-generation model to prepare the copy-ready narration.</small></div><Link href="/studio/settings">Open Settings →</Link></div>}
+            </div> : <div className="voice-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Connect one text-generation model to prepare the copy-ready narration.</small></div><a href="/studio/settings">Open Settings →</a></div>}
 
             <section className="voice-profile-section" aria-labelledby="voice-profile-title">
               <div className="voice-profile-intro"><p>Voiceover mode</p><h3 id="voice-profile-title">How should the AI prepare the complete Script?</h3><span>Both modes send the full Final Script to your selected AI. Only one copy-ready result returns.</span></div>
@@ -425,7 +424,7 @@ export default function VoiceoverWorkspace() {
               <div className={`voice-compatibility ${profile}`}><span>{profile === 'universal' ? 'U' : 'A'}</span><div><strong>{profile === 'universal' ? 'Normal copy-paste Voiceover' : 'Advanced copy-paste Voiceover'}</strong><p>{profile === 'universal' ? 'Only the spoken Script remains. Punctuation and paragraph spacing guide the voice naturally.' : 'Professional pause and performance tags are inserted inside the narration. Nothing else is added.'}</p></div></div>
             </section>
 
-            {!scriptFinal ? <div className="voice-prerequisite"><span>!</span><div><strong>Final Script is not ready</strong><p>Return to Script and complete Recheck & Polish. This page will then receive the reviewed version.</p></div><Link href="/studio/scripts">Return to Script</Link></div> : null}
+            {!scriptFinal ? <div className="voice-prerequisite"><span>!</span><div><strong>Final Script is not ready</strong><p>Return to Script and complete Recheck & Polish. This page will then receive the reviewed version.</p></div><a href="/studio/scripts">Return to Script</a></div> : null}
 
             {error ? <p className="voice-message error" role="alert"><span>!</span>{error}</p> : null}
             {notice ? <p className="voice-message success" role="status"><span>✓</span>{notice}</p> : null}
@@ -440,7 +439,7 @@ export default function VoiceoverWorkspace() {
             <footer className="voice-actions"><div><span>Saved automatically on this device</span><small>{voiceRecord.voiceProfile === 'advanced' ? 'Copy everything into a bracket-tag compatible voice model.' : 'Copy everything into almost any voice model.'}</small></div><button type="button" onClick={downloadVoiceover}>Download .txt</button><button className="primary" type="button" onClick={() => void copyVoiceover()}>Copy complete Voiceover</button></footer>
           </section> : <section className="voice-empty"><div>≋</div><p>FINAL SCRIPT IS WAITING</p><h2>No voice request has been sent.</h2><span>Choose Normal or Advanced, then click Prepare Voiceover. Only the final copy-ready narration will appear here.</span></section>}
 
-          <footer className="voice-next"><Link href="/studio/scripts"><span>Previous stage</span><strong>← Script</strong></Link><div><span>Current production idea</span><strong>{selectedIdea?.title ?? 'Nothing selected'}</strong></div><button type="button" disabled={!outputCurrent || loading} onClick={continueToVisuals}><span>{outputCurrent ? 'Copy-ready Voiceover saved' : 'Prepare one current version first'}</span><strong>Visuals <i>→</i></strong></button></footer>
+          <footer className="voice-next"><a href="/studio/scripts"><span>Previous stage</span><strong>← Script</strong></a><div><span>Current production idea</span><strong>{selectedIdea?.title ?? 'Nothing selected'}</strong></div><button type="button" disabled={!outputCurrent || loading} onClick={continueToVisuals}><span>{outputCurrent ? 'Copy-ready Voiceover saved' : 'Prepare one current version first'}</span><strong>Visuals <i>→</i></strong></button></footer>
         </div>
       </section>
     </main>

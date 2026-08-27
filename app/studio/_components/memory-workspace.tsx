@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import type { StudioStageId } from '../_lib/stages';
 import StudioSidebar from './studio-sidebar';
@@ -358,7 +357,7 @@ export default function MemoryWorkspace() {
           <section className="memory-library">
             <header>
               <div><p>Saved subjects</p><h2>Idea Library</h2><span>Only five records appear at first, keeping this workspace calm even after years of use.</span></div>
-              <Link href="/studio/ideas">＋ Discover new ideas</Link>
+              <a href="/studio/ideas">＋ Discover new ideas</a>
             </header>
 
             <div className="memory-toolbar">
@@ -401,7 +400,7 @@ export default function MemoryWorkspace() {
                   </footer>
                 </>
               ) : <div className="memory-empty"><span>⌕</span><strong>No matching ideas</strong><p>Try a different search phrase or status filter.</p><button type="button" onClick={() => resetList('', 'all')}>Clear filters</button></div>
-            ) : <div className="memory-empty"><span>✦</span><strong>Your long-term memory starts with one saved idea.</strong><p>Generate ideas, then use Save on the subjects you want protected from future duplication.</p><Link href="/studio/ideas">Go to Ideas →</Link></div>}
+            ) : <div className="memory-empty"><span>✦</span><strong>Your long-term memory starts with one saved idea.</strong><p>Generate ideas, then use Save on the subjects you want protected from future duplication.</p><a href="/studio/ideas">Go to Ideas →</a></div>}
           </section>
 
           {deleteTarget ? (

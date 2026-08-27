@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StudioStage, StudioStageId } from '../_lib/stages';
 import { getPreviousStage, studioStages } from '../_lib/stages';
@@ -382,7 +381,7 @@ export default function StageWorkspace({ stage }: { stage: StudioStage }) {
                   {stage.id === 'research' ? <div className={`automation-grounding ${providerId === 'custom' ? 'manual' : ''}`}><i />{providerId === 'custom' ? 'Verification plan' : 'Live web grounding'}</div> : null}
                 </>
               ) : (
-                <div className="automation-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Add an API provider and select at least one model. Your key stays in this browser and is never stored in a database.</small></div><Link href="/studio/settings">Open Settings →</Link></div>
+                <div className="automation-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Add an API provider and select at least one model. Your key stays in this browser and is never stored in a database.</small></div><a href="/studio/settings">Open Settings →</a></div>
               )}
             </div>
 
@@ -393,7 +392,7 @@ export default function StageWorkspace({ stage }: { stage: StudioStage }) {
 
             {!prerequisiteReady && previousStage ? (
               <div className="automation-prerequisite">
-                <span>←</span><div><strong>{stage.id === 'research' ? 'Choose an idea first' : `${previousStage.title} is not ready yet`}</strong><p>Complete the previous stage so its approved output can become this stage&apos;s context.</p></div><Link href={`/studio/${previousStage.id}`}>Open {previousStage.title}</Link>
+                <span>←</span><div><strong>{stage.id === 'research' ? 'Choose an idea first' : `${previousStage.title} is not ready yet`}</strong><p>Complete the previous stage so its approved output can become this stage&apos;s context.</p></div><a href={`/studio/${previousStage.id}`}>Open {previousStage.title}</a>
               </div>
             ) : null}
 
@@ -450,7 +449,7 @@ export default function StageWorkspace({ stage }: { stage: StudioStage }) {
             {stage.nextPath && stage.nextLabel ? (
               <button type="button" onClick={goNext} disabled={loading || (stage.id === 'ideas' ? !workflow.selectedIdea : !draft.trim())}><span>Approve & continue</span><strong>{stage.nextLabel} <i>→</i></strong></button>
             ) : (
-              <Link href="/studio"><span>Workflow complete</span><strong>Studio overview <i>→</i></strong></Link>
+              <a href="/studio"><span>Workflow complete</span><strong>Studio overview <i>→</i></strong></a>
             )}
           </footer>
         </div>

@@ -1,7 +1,6 @@
 'use client';
 
 import { jsonrepair } from 'jsonrepair';
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { StudioStageId } from '../_lib/stages';
 import ScriptDocumentView, { getSpokenScriptText } from './script-document-view';
@@ -594,7 +593,7 @@ export default function AudioWorkspace() {
                   <div className="audio-request-note"><i />One focused request</div>
                 </>
               ) : (
-                <div className="automation-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Add one provider and choose a capable model. Your key stays in this browser.</small></div><Link href="/studio/settings">Open Settings →</Link></div>
+                <div className="automation-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Add one provider and choose a capable model. Your key stays in this browser.</small></div><a href="/studio/settings">Open Settings →</a></div>
               )}
             </div>
 
@@ -612,7 +611,7 @@ export default function AudioWorkspace() {
               <label><span>Use this only for a special creative need. The source, timing, rights and selected-mode rules cannot be overridden.</span><textarea value={direction} onChange={(event) => setDirection(event.target.value)} placeholder="Example: Protect a longer silence before the final reveal." /></label>
             </details>
 
-            {!handoffReady ? <div className="audio-prerequisite"><span>←</span><div><strong>The current Visual handoff is not ready</strong><p>Finish the current Final Script, Voiceover and complete Visual Plan first. No Audio request will be sent yet.</p></div><Link href="/studio/visuals">Open Visuals</Link></div> : null}
+            {!handoffReady ? <div className="audio-prerequisite"><span>←</span><div><strong>The current Visual handoff is not ready</strong><p>Finish the current Final Script, Voiceover and complete Visual Plan first. No Audio request will be sent yet.</p></div><a href="/studio/visuals">Open Visuals</a></div> : null}
             {error ? <p className="audio-message error" role="alert"><span>!</span>{error}</p> : null}
             {notice ? <p className="audio-message success" role="status"><span>✓</span>{notice}</p> : null}
             {legacyPlanPreserved ? <p className="audio-message warning" role="status"><span>i</span>An older Audio Plan is preserved but could not be read. Building a new plan will replace it only after usable output is ready.</p> : null}
@@ -660,7 +659,7 @@ export default function AudioWorkspace() {
             <section className="audio-empty"><div>♪</div><p>FINAL SCRIPT + TIMING READY</p><h2>{legacyPlanPreserved ? 'Your older Audio Plan is preserved.' : 'No Audio Plan has been built.'}</h2><span>Click Build Audio Plan. The result will contain only the search phrase, source, volume and fade settings needed in CapCut.</span></section>
           )}
           <footer className="audio-next">
-            <Link href="/studio/visuals"><span>Previous stage</span><strong>← Visuals</strong></Link>
+            <a href="/studio/visuals"><span>Previous stage</span><strong>← Visuals</strong></a>
             <div><span>Current production idea</span><strong>{selectedIdea?.title ?? 'Nothing selected'}</strong></div>
             <button type="button" disabled={!planCurrent || loading} onClick={continueToThumbnails}><span>{planCurrent ? 'Complete Audio Plan saved' : 'Build one current plan first'}</span><strong>Thumbnails <i>→</i></strong></button>
           </footer>

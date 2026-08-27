@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StudioStageId } from '../_lib/stages';
 import ScriptDocumentView, { getScriptSignals, normalizeScriptMarkdown } from './script-document-view';
@@ -544,11 +543,11 @@ export default function ScriptWorkspace() {
                 <h2>{selectedIdea.title}</h2>
                 <span>{researchSources.length} source{researchSources.length === 1 ? '' : 's'} · {researchDecision || 'No handoff decision'} · {researchRecord.providerName} · {researchRecord.modelName}</span>
               </div>
-              <div className="script-handoff-actions"><button type="button" aria-expanded={researchOpen} onClick={() => setResearchOpen((open) => !open)}>{researchOpen ? 'Hide research' : 'View research'}</button><Link href="/studio/research">Back to Research</Link></div>
+              <div className="script-handoff-actions"><button type="button" aria-expanded={researchOpen} onClick={() => setResearchOpen((open) => !open)}>{researchOpen ? 'Hide research' : 'View research'}</button><a href="/studio/research">Back to Research</a></div>
               {researchOpen ? <div className="script-research-preview"><pre>{researchRecord.content}</pre></div> : null}
             </> : <>
               <div className="script-handoff-copy"><div><p>Research required</p></div><h2>No approved Research received</h2><span>Return to Ideas and Research before asking the writing model to create a story.</span></div>
-              <Link href="/studio/research">Open Research →</Link>
+              <a href="/studio/research">Open Research →</a>
             </>}
           </section>
 
@@ -558,7 +557,7 @@ export default function ScriptWorkspace() {
               <label><span>AI provider</span><div><b>{providerId ? providerMark(providerId) : '—'}</b><select value={providerId} onChange={(event) => changeProvider(event.target.value as ProviderId)}>{connections.map((connection) => <option value={connection.providerId} key={connection.providerId}>{connection.providerName}</option>)}</select></div></label>
               <label><span>Model for Script & Recheck</span><div><select value={modelId} onChange={(event) => changeModel(event.target.value)}>{activeConnection?.models.map((model) => <option value={model.id} key={model.id}>{model.name}</option>)}</select></div></label>
               <div className="script-model-policy"><i /><span><strong>No new web search</strong><small>Uses approved Research and its claim ledger only</small></span></div>
-            </div> : <div className="script-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Connect a provider and choose a strong long-form writing model.</small></div><Link href="/studio/settings">Open Settings →</Link></div>}
+            </div> : <div className="script-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Connect a provider and choose a strong long-form writing model.</small></div><a href="/studio/settings">Open Settings →</a></div>}
 
             <section className="script-duration-control" aria-label="Automatic Script length">
               <div className="script-duration-copy"><span>AUTO</span><div><p>Automatic length</p><h3>The story decides how long it needs</h3><small>No 10, 12 or 14-minute target. The Script ends when the evidence and story are complete—without padding.</small></div></div>
@@ -574,7 +573,7 @@ export default function ScriptWorkspace() {
 
             <details className="script-direction"><summary><div><strong>Optional direction</strong><small>Leave blank for the complete automatic writing system</small></div><i>＋</i></summary><label><span>Use this only for a deliberate emphasis or exclusion. It cannot override the evidence.</span><textarea value={direction} onChange={(event) => setDirection(event.target.value)} placeholder="Example: Keep the tone intimate and restrained; give extra space to the family’s winter routine." /></label></details>
 
-            {!researchReady ? <div className="script-prerequisite"><span>!</span><div><strong>Research is not ready for Script</strong><p>Use the automatic verification action in Research first. Script generation remains manual after the evidence handoff passes.</p></div><Link href="/studio/research">Return to Research</Link></div> : null}
+            {!researchReady ? <div className="script-prerequisite"><span>!</span><div><strong>Research is not ready for Script</strong><p>Use the automatic verification action in Research first. Script generation remains manual after the evidence handoff passes.</p></div><a href="/studio/research">Return to Research</a></div> : null}
             {error ? <p className="script-message error" role="alert"><span>!</span>{error}</p> : null}
             {notice ? <p className="script-message success" role="status"><span>✓</span>{notice}</p> : null}
 
@@ -603,7 +602,7 @@ export default function ScriptWorkspace() {
             </section>
           </> : <section className="script-empty"><div>¶</div><p>READY FOR THE STORY</p><h2>Research is present. The Script will begin only when you decide.</h2><span>The engine will write narration—not visual prompts, music notes, voice cues, packaging or filler reserved for later stages.</span></section>}
 
-          <footer className="script-next"><Link href="/studio/research"><span>Previous stage</span><strong>← Research</strong></Link><div><span>Current production idea</span><strong>{selectedIdea?.title ?? 'Nothing selected'}</strong></div><button type="button" disabled={!finalReady || loading || dirty} onClick={continueToVoiceover}><span>{finalReady ? 'Ready—click to continue' : activeRecord ? 'Click Recheck & Polish above' : 'Write the Script first'}</span><strong>Voiceover <i>→</i></strong></button></footer>
+          <footer className="script-next"><a href="/studio/research"><span>Previous stage</span><strong>← Research</strong></a><div><span>Current production idea</span><strong>{selectedIdea?.title ?? 'Nothing selected'}</strong></div><button type="button" disabled={!finalReady || loading || dirty} onClick={continueToVoiceover}><span>{finalReady ? 'Ready—click to continue' : activeRecord ? 'Click Recheck & Polish above' : 'Write the Script first'}</span><strong>Voiceover <i>→</i></strong></button></footer>
         </div>
       </section>
     </main>

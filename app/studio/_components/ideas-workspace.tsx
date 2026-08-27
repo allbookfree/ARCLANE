@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { type StudioStageId } from '../_lib/stages';
 import StudioSidebar from './studio-sidebar';
@@ -677,7 +676,7 @@ export default function IdeasWorkspace() {
                 <div className={`idea-pro-search-control${webSearchCapable ? webSearchEnabled ? ' enabled' : ' disabled' : ' unavailable'}`}><div><i /><span><strong>{webSearchCapable ? webSearchEnabled ? 'Live search on' : 'Live search off' : 'Live search unavailable'}</strong><small>{providerId === 'gemini' ? 'Google Search grounding · provider limits may apply' : providerId === 'openai' ? 'OpenAI web search · provider charges may apply' : providerId === 'anthropic' ? 'Anthropic web search · provider charges may apply' : 'Custom API has no verified search adapter'}</small></span></div><button type="button" role="switch" aria-checked={webSearchEnabled} disabled={!webSearchCapable} onClick={toggleWebSearch} aria-label="Toggle live web search"><i /></button></div>
               </div>
             ) : (
-              <div className="idea-pro-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Connect a provider and select a model before generating ideas.</small></div><Link href="/studio/settings">Open Settings →</Link></div>
+              <div className="idea-pro-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Connect a provider and select a model before generating ideas.</small></div><a href="/studio/settings">Open Settings →</a></div>
             )}
 
             <details className="idea-pro-advanced" id="idea-advanced">
