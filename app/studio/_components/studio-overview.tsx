@@ -51,14 +51,14 @@ export default function StudioOverview() {
                 <span>{channel.language}</span>
               </div>
 
-              <button
-                type="button"
+              <Link
+                href={channel.route}
                 className="channel-action-btn"
                 onClick={(e) => studioNavigate(channel.route, e)}
               >
                 <span>Open Studio</span>
                 <i>→</i>
-              </button>
+              </Link>
             </article>
           ))}
         </section>

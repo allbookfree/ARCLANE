@@ -40,26 +40,44 @@ export function studioNavigate(href: string, event?: React.MouseEvent | MouseEve
       event.metaKey ||
       event.ctrlKey ||
       event.shiftKey ||
-      event.altKey ||
-      event.defaultPrevented)
+      event.altKey)
   ) {
     return;
+  }
+
+  if (event) {
+    event.preventDefault();
   }
 
   const [pathAndQuery, hash] = href.split('#');
   const targetPath = pathAndQuery || '/studio';
   const currentPath = window.location.pathname + window.location.search;
+  const currentHash = window.location.hash;
+  const targetHash = hash ? `#${hash}` : '';
 
-  if (currentPath === targetPath && hash) {
-    if (event) event.preventDefault();
-    window.location.hash = hash;
-    const target = document.getElementById(hash);
-    if (target) {
-      target.scrollIntoView({ behavior: 'smooth' });
+  if (href.startsWith('/studio')) {
+    if (currentPath !== targetPath || currentHash !== targetHash) {
+      window.history.pushState(null, '', href);
     }
-    return;
-  }
 
-  if (event) event.preventDefault();
-  window.location.assign(href);
+    const view = getStudioViewFromPath(targetPath);
+    window.dispatchEvent(
+      new CustomEvent(STUDIO_NAVIGATE_EVENT, {
+        detail: { href, view },
+      }),
+    );
+
+    if (hash) {
+      requestAnimationFrame(() => {
+        const target = document.getElementById(hash);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth' });
+        }
+      });
+    } else {
+      window.scrollTo({ top: 0, left: 0 });
+    }
+  } else {
+    window.location.assign(href);
+  }
 }

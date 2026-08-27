@@ -2,6 +2,7 @@
 
 import { jsonrepair } from 'jsonrepair';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { studioNavigate } from '../_lib/navigation';
 import { getSpokenScriptText } from './script-document-view';
 import StudioSidebar from './studio-sidebar';
@@ -478,7 +479,7 @@ export default function DescriptionWorkspace() {
         <section className={`description-handoff ${handoffReady ? 'ready' : ''}`}>
           <div className="description-handoff-icon">TH</div>
           <div><p>YOUR FINAL THUMBNAIL IS ALREADY HERE</p><h2>{selectedThumbnail?.conceptName || selectedIdea?.title || 'No Final Thumbnail selected'}</h2><span>{selectedThumbnail ? 'Nothing to do here. The system will automatically match every title to this Thumbnail.' : 'Return to Thumbnails and choose one Final direction first.'}</span></div>
-          <div className="description-handoff-actions"><button type="button" disabled={!selectedThumbnail} onClick={() => setSourceOpen(true)}>View details</button><a href="/studio/thumbnails" onClick={(e) => studioNavigate('/studio/thumbnails', e)}>Change Thumbnail</a></div>
+          <div className="description-handoff-actions"><button type="button" disabled={!selectedThumbnail} onClick={() => setSourceOpen(true)}>View details</button><Link href="/studio/thumbnails" onClick={(e) => studioNavigate('/studio/thumbnails', e)}>Change Thumbnail</Link></div>
         </section>
 
         <section className="description-standard" aria-label="Three simple steps">
@@ -490,7 +491,7 @@ export default function DescriptionWorkspace() {
         <section className="description-builder">
           <header><div><span>1</span><strong>Create Titles &amp; Description</strong></div><div><span>Action</span><strong>Click once</strong></div></header>
           <div className="description-model-bar">
-            {connections.length ? <><label><span>AI provider</span><div><b>{providerId ? providerMark(providerId) : '—'}</b><select value={providerId} onChange={(event) => changeProvider(event.target.value as ProviderId)}>{connections.map((connection) => <option value={connection.providerId} key={connection.providerId}>{connection.providerName}</option>)}</select></div></label><label><span>Model for upload packaging</span><div><select value={modelId} onChange={(event) => changeModel(event.target.value)}>{activeConnection?.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></div></label><div className="description-model-note"><i />One focused request</div></> : <div className="description-no-model">No AI provider connected. <a href="/studio/settings" onClick={(e) => studioNavigate('/studio/settings', e)}>Add one in Settings →</a></div>}
+            {connections.length ? <><label><span>AI provider</span><div><b>{providerId ? providerMark(providerId) : '—'}</b><select value={providerId} onChange={(event) => changeProvider(event.target.value as ProviderId)}>{connections.map((connection) => <option value={connection.providerId} key={connection.providerId}>{connection.providerName}</option>)}</select></div></label><label><span>Model for upload packaging</span><div><select value={modelId} onChange={(event) => changeModel(event.target.value)}>{activeConnection?.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></div></label><div className="description-model-note"><i />One focused request</div></> : <div className="description-no-model">No AI provider connected. <Link href="/studio/settings" onClick={(e) => studioNavigate('/studio/settings', e)}>Add one in Settings →</Link></div>}
           </div>
           <details className="description-direction"><summary><span>Optional: add a special instruction</span><small>Usually leave this closed</small></summary><label><span>Only write something when you want a specific change.</span><textarea value={direction} onChange={(event) => setDirection(event.target.value)} placeholder="Example: Keep every title calm and documentary-like. Leave blank for automatic best fit." /></label></details>
           <div className="description-request-note"><span>AUTOMATIC</span><p>Your Final Script and selected Thumbnail are added automatically. Research evidence stays private; no source link is published.</p></div>
@@ -521,7 +522,7 @@ export default function DescriptionWorkspace() {
           </details>
         </> : <section className="description-empty"><div>≡</div><p>STEP 1</p><h2>Create your Titles &amp; Description</h2><span>Choose the AI model above, then click Create Titles &amp; Description once. Your Script and selected Thumbnail are connected automatically; research evidence stays private.</span></section>}
 
-        <section className="description-next"><a href="/studio/thumbnails" onClick={(e) => studioNavigate('/studio/thumbnails', e)}><span>Previous</span><strong>← Thumbnails</strong></a><div><span>Final title</span><strong>{selectedTitle?.title || 'Choose one title above'}</strong></div><button type="button" disabled={!planCurrent || !selectedTitle} onClick={continueToShorts}><span>Next section</span><strong>Shorts <i>→</i></strong></button></section>
+        <section className="description-next"><Link href="/studio/thumbnails" onClick={(e) => studioNavigate('/studio/thumbnails', e)}><span>Previous</span><strong>← Thumbnails</strong></Link><div><span>Final title</span><strong>{selectedTitle?.title || 'Choose one title above'}</strong></div><button type="button" disabled={!planCurrent || !selectedTitle} onClick={continueToShorts}><span>Next section</span><strong>Shorts <i>→</i></strong></button></section>
       </div>
     </section>
 

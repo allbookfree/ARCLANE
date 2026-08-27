@@ -24,18 +24,18 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
           <div><strong>ARCLANE</strong><small>Creator Studio</small></div>
         </Link>
 
-        <a
+        <Link
           className="module-overview-link"
           href="/studio"
           onClick={(e) => studioNavigate('/studio', e)}
         >
           <span aria-hidden="true">⌂</span> Channels Hub
-        </a>
+        </Link>
 
         <div className="module-sequence-label">Production sequence</div>
         <div className="module-sequence" aria-label="Production sequence">
           {studioStages.map((item) => (
-            <a
+            <Link
               className={item.id === activeStageId ? 'active' : ''}
               href={`/studio/${item.id}`}
               aria-current={item.id === activeStageId ? 'page' : undefined}
@@ -45,11 +45,11 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
               <span>{item.number}</span>
               <strong>{item.title}</strong>
               <i />
-            </a>
+            </Link>
           ))}
         </div>
 
-        <a
+        <Link
           className={`module-settings-link${memoryActive ? ' active' : ''}`}
           href="/studio/memory"
           aria-current={memoryActive ? 'page' : undefined}
@@ -57,7 +57,7 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
         >
           <span aria-hidden="true">▤</span>
           <strong>Idea Memory</strong>
-        </a>
+        </Link>
 
         <button
           type="button"
@@ -69,7 +69,7 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
           <strong>New video</strong>
         </button>
 
-        <a
+        <Link
           className={`module-settings-link${settingsActive ? ' active' : ''}`}
           href="/studio/settings"
           aria-current={settingsActive ? 'page' : undefined}
@@ -78,7 +78,7 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
         >
           <span aria-hidden="true">⚙</span>
           <strong>Settings</strong>
-        </a>
+        </Link>
       </aside>
 
       <NewVideoModal
