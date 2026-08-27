@@ -1,0 +1,448 @@
+/* Creator Studio Hub - Multi-Channel Fleet */
+
+.studio-hub {
+  min-height: 100vh;
+  padding: 0 clamp(20px, 5vw, 64px) 80px;
+  background: radial-gradient(circle at 50% 0%, #112246 0%, #0a1428 50%, #060d1b 100%);
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+.studio-hub-header {
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.studio-hub-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+  text-decoration: none;
+}
+
+.studio-hub-brand span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  font-family: Georgia, serif;
+  font-size: 20px;
+  font-style: italic;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+}
+
+.studio-hub-brand strong {
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  font-weight: 800;
+}
+
+.studio-hub-brand small {
+  margin-left: 8px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.studio-hub-back {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  transition: color 150ms ease;
+}
+
+.studio-hub-back:hover {
+  color: #fff;
+}
+
+.studio-hub-hero {
+  max-width: 1100px;
+  padding: 64px 0 48px;
+}
+
+.studio-hub-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.studio-hub-hero h1 {
+  margin: 0 0 18px;
+  font-size: clamp(38px, 6vw, 68px);
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  color: #ffffff;
+}
+
+.studio-hub-hero p {
+  max-width: 680px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.studio-hub-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+  margin-top: 36px;
+  padding-top: 28px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.studio-hub-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.studio-hub-stat strong {
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.studio-hub-stat span {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+/* Channel Workspaces Section */
+.studio-hub-section {
+  margin-top: 20px;
+}
+
+.studio-hub-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.studio-hub-section-header h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.studio-hub-section-header span {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.channel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 24px;
+}
+
+/* Channel Box Card */
+.channel-box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 32px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(20, 35, 68, 0.75) 0%, rgba(11, 22, 45, 0.9) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(16px);
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+  overflow: hidden;
+}
+
+.channel-box::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  opacity: 0.8;
+}
+
+.channel-box:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(59, 130, 246, 0.4);
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.channel-box-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.channel-avatar {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(37, 99, 235, 0.4) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  color: #93c5fd;
+  font-family: Georgia, serif;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+
+.channel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #34d399;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.channel-niche-pill {
+  display: inline-block;
+  align-self: flex-start;
+  margin-bottom: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #93c5fd;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.channel-box h3 {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+
+.channel-tagline {
+  margin: 0 0 14px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.channel-description {
+  margin: 0 0 24px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.channel-specs {
+  display: grid;
+  gap: 10px;
+  margin-top: auto;
+  margin-bottom: 28px;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.channel-spec-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.channel-spec-row span {
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.channel-spec-row strong {
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 600;
+  text-align: right;
+}
+
+.channel-enter-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px 24px;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #0a1428;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(255, 255, 255, 0.15);
+  transition: background 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+
+.channel-enter-btn:hover {
+  background: #f0f4ff;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(255, 255, 255, 0.25);
+}
+
+.channel-enter-btn i {
+  font-style: normal;
+  font-size: 16px;
+  transition: transform 150ms ease;
+}
+
+.channel-enter-btn:hover i {
+  transform: translateX(4px);
+}
+
+/* Upcoming / Slot Cards */
+.channel-box.upcoming {
+  background: linear-gradient(180deg, rgba(16, 26, 50, 0.6) 0%, rgba(9, 16, 32, 0.8) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.channel-box.upcoming::before {
+  background: linear-gradient(90deg, #8b5cf6, #a78bfa);
+}
+
+.channel-box.upcoming .channel-avatar {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(124, 58, 237, 0.3) 100%);
+  border-color: rgba(139, 92, 246, 0.35);
+  color: #c4b5fd;
+}
+
+.channel-box.upcoming .channel-badge {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: rgba(139, 92, 246, 0.3);
+  color: #c4b5fd;
+}
+
+.channel-box.upcoming .channel-enter-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: none;
+  cursor: default;
+}
+
+.channel-box.upcoming:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+/* Add Channel Box */
+.channel-add-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 32px;
+  border-radius: 20px;
+  border: 2px dashed rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.02);
+  transition: border-color 150ms ease, background 150ms ease;
+  min-height: 480px;
+}
+
+.channel-add-box:hover {
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.03);
+}
+
+.channel-add-icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 26px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 20px;
+}
+
+.channel-add-box h3 {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.channel-add-box p {
+  margin: 0 0 24px;
+  max-width: 280px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.channel-add-badge {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 768px) {
+  .channel-grid {
+    grid-template-columns: 1fr;
+  }
+  .studio-hub-hero h1 {
+    font-size: 36px;
+  }
+}

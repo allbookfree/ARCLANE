@@ -21,7 +21,7 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
         href="/studio"
         onClick={(e) => studioNavigate('/studio', e)}
       >
-        <span aria-hidden="true">⌂</span> Studio overview
+        <span aria-hidden="true">⌂</span> Channels Hub
       </a>
 
       <div className="module-sequence-label">Production sequence</div>
