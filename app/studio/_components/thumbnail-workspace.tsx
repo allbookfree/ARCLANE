@@ -2,6 +2,7 @@
 
 import { jsonrepair } from 'jsonrepair';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { studioNavigate } from '../_lib/navigation';
 import { getSpokenScriptText } from './script-document-view';
 import StudioSidebar from './studio-sidebar';
 
@@ -500,7 +501,7 @@ export default function ThumbnailWorkspace() {
       setError('Select one Final Thumbnail direction before continuing to Description.');
       return;
     }
-    window.location.assign('/studio/description');
+    studioNavigate('/studio/description');
   }
 
   if (!hydrated) {
@@ -518,7 +519,7 @@ export default function ThumbnailWorkspace() {
           <section className="thumbnail-handoff">
             <div className="thumbnail-handoff-icon">TH</div>
             <div><p>APPROVED EPISODE HANDOFF</p><h2>{selectedIdea?.title ?? 'No episode selected'}</h2><span>Thumbnail generation uses the selected idea, verified research and Final Script. Audio is checked only as the completed workflow handoff; it is not added to the AI request.</span><div className="thumbnail-handoff-badges"><b className={researchRecord ? 'ready' : ''}>Research {researchRecord ? 'ready' : 'missing'}</b><b className={scriptRecord ? 'ready' : ''}>Final Script {scriptRecord ? 'ready' : 'missing'}</b><b className={audioRecord ? 'ready' : ''}>Audio {audioRecord ? 'ready' : 'missing'}</b><b className="ready">{visualRecord?.visualModestyMode === 'strict' ? 'Strict covering carried forward' : 'Evidence-led modesty'}</b></div></div>
-            <div className="thumbnail-handoff-actions"><button type="button" disabled={!selectedIdea || !scriptRecord} onClick={() => setSourceOpen(true)}>View story source</button><a href="/studio/audio">← Back to Audio</a></div>
+            <div className="thumbnail-handoff-actions"><button type="button" disabled={!selectedIdea || !scriptRecord} onClick={() => setSourceOpen(true)}>View story source</button><a href="/studio/audio" onClick={(e) => studioNavigate('/studio/audio', e)}>← Back to Audio</a></div>
           </section>
 
           <section className="thumbnail-standard" aria-label="Thumbnail production standard">
@@ -535,10 +536,10 @@ export default function ThumbnailWorkspace() {
                 <label><span>AI provider</span><div><b>{providerId ? providerMark(providerId) : '—'}</b><select value={providerId} onChange={(event) => changeProvider(event.target.value as ProviderId)}>{connections.map((connection) => <option value={connection.providerId} key={connection.providerId}>{connection.providerName}</option>)}</select></div></label>
                 <label><span>Model for Thumbnail strategy</span><div><select value={modelId} onChange={(event) => changeModel(event.target.value)}>{activeConnection?.models.map((model) => <option value={model.id} key={model.id}>{model.name}</option>)}</select></div></label>
                 <div className="thumbnail-request-note"><i />One focused request</div>
-              </> : <div className="thumbnail-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Add one provider and choose a capable model. Your key remains in this browser.</small></div><a href="/studio/settings">Open Settings →</a></div>}
+              </> : <div className="thumbnail-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Add one provider and choose a capable model. Your key remains in this browser.</small></div><a href="/studio/settings" onClick={(e) => studioNavigate('/studio/settings', e)}>Open Settings →</a></div>}
             </div>
             <details className="thumbnail-direction"><summary>Optional direction for these three options <span>＋</span></summary><label><span>Use only for a special need. Truthfulness, mobile clarity and three genuinely different concepts cannot be overridden.</span><textarea value={direction} onChange={(event) => setDirection(event.target.value)} placeholder="Example: Avoid close-up faces; explore an object-led mystery as one option." /></label></details>
-            {!handoffReady ? <div className="thumbnail-prerequisite"><span>!</span><div><strong>The production handoff is incomplete</strong><p>Finish Research, Final Script and one current Audio Plan first.</p></div><a href="/studio/audio">Open Audio</a></div> : null}
+            {!handoffReady ? <div className="thumbnail-prerequisite"><span>!</span><div><strong>The production handoff is incomplete</strong><p>Finish Research, Final Script and one current Audio Plan first.</p></div><a href="/studio/audio" onClick={(e) => studioNavigate('/studio/audio', e)}>Open Audio</a></div> : null}
             {error ? <p className="thumbnail-message error" role="alert"><span>!</span>{error}</p> : null}
             {notice ? <p className="thumbnail-message success" role="status"><span>✓</span>{notice}</p> : null}
             <div className="thumbnail-build-row"><div><strong>{plan ? 'Create a fresh complete-prompt set without risking this one' : 'Ready for three truthful packaging directions'}</strong><span>A new result replaces saved options only after all three complete Thumbnail prompts pass automatic checks.</span></div><button type="button" disabled={loading || !handoffReady || !activeModel} onClick={() => void buildThumbnailPlan()}>{loading ? <><i className="thumbnail-spinner" /> Designing carefully…</> : <>{plan ? 'Create 3 New Options' : 'Create 3 Options'} <b>→</b></>}</button></div>
@@ -568,7 +569,7 @@ export default function ThumbnailWorkspace() {
             <div className="thumbnail-recommendation"><span>Editorial starting recommendation</span><strong>{plan.concepts.find((concept) => concept.id === plan.recommendedId)?.conceptName}</strong><p>{plan.recommendationReason}</p><small>This is not a prediction of views. The right viewers&apos; watch-time response—or your deliberate editorial choice—decides the final package.</small></div>
           </section> : <section className="thumbnail-empty"><div>◩</div><p>STORY SOURCE READY</p><h2>{legacyPlanPreserved ? 'Your older text output is preserved.' : 'No Thumbnail options have been created.'}</h2><span>Click Create 3 Options. You will receive three distinct, script-grounded, complete Thumbnail prompts, including both text-free and text-led packaging.</span></section>}
 
-          <footer className="thumbnail-next"><a href="/studio/audio"><span>Previous stage</span><strong>← Audio</strong></a><div><span>Final direction</span><strong>{selectedConcept?.conceptName ?? 'Choose one option above'}</strong></div><button type="button" disabled={!planCurrent || !selectedConcept || loading} onClick={continueToDescription}><span>{selectedConcept ? 'Final Thumbnail direction saved' : 'Select one Final direction first'}</span><strong>Description <i>→</i></strong></button></footer>
+          <footer className="thumbnail-next"><a href="/studio/audio" onClick={(e) => studioNavigate('/studio/audio', e)}><span>Previous stage</span><strong>← Audio</strong></a><div><span>Final direction</span><strong>{selectedConcept?.conceptName ?? 'Choose one option above'}</strong></div><button type="button" disabled={!planCurrent || !selectedConcept || loading} onClick={continueToDescription}><span>{selectedConcept ? 'Final Thumbnail direction saved' : 'Select one Final direction first'}</span><strong>Description <i>→</i></strong></button></footer>
         </div>
       </section>
 

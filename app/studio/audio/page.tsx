@@ -1,9 +1,8 @@
 import type { Metadata } from 'next';
-import AudioWorkspace from '../_components/audio-workspace';
-import './audio.css';
+import StudioRouter from '../_components/studio-router';
 
 export const metadata: Metadata = { title: 'Audio — Arclane Creator Studio' };
 
 export default function AudioPage() {
-  return <AudioWorkspace />;
+  return <StudioRouter initialView="audio" />;
 }

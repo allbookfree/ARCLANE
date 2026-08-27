@@ -3,6 +3,7 @@
 import { jsonrepair } from 'jsonrepair';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { StudioStageId } from '../_lib/stages';
+import { studioNavigate } from '../_lib/navigation';
 import ScriptDocumentView, { getScriptSignals, getSpokenScriptText } from './script-document-view';
 import StudioSidebar from './studio-sidebar';
 
@@ -1169,7 +1170,7 @@ export default function VisualsWorkspace() {
       setError('Build one complete current Visual Plan before continuing to Audio.');
       return;
     }
-    window.location.assign('/studio/audio');
+    studioNavigate('/studio/audio');
   }
 
   if (!hydrated) {
@@ -1192,9 +1193,9 @@ export default function VisualsWorkspace() {
             <div className="visual-handoff-mark">SC</div>
             {scriptRecord ? <>
               <div className="visual-handoff-copy"><div><p>Final Script received</p><strong>{handoffReady ? '✓ Voice timing connected' : 'Voiceover is missing or outdated'}</strong></div><h2>{selectedIdea?.title ?? 'Current documentary'}</h2><span>{scriptPreview || 'No Script preview is available.'}</span><small>Story and facts: Final Script · timing and spoken order: current Voiceover · no request starts automatically</small></div>
-              <div className="visual-handoff-actions"><button type="button" aria-expanded={scriptOpen} onClick={() => setScriptOpen((open) => !open)}>{scriptOpen ? 'Hide full Script' : 'View full Script'}</button><a href="/studio/voiceover">Back to Voiceover</a></div>
+              <div className="visual-handoff-actions"><button type="button" aria-expanded={scriptOpen} onClick={() => setScriptOpen((open) => !open)}>{scriptOpen ? 'Hide full Script' : 'View full Script'}</button><a href="/studio/voiceover" onClick={(e) => studioNavigate('/studio/voiceover', e)}>Back to Voiceover</a></div>
               {scriptOpen ? <div className="visual-source-full"><ScriptDocumentView content={scriptRecord.content} /></div> : null}
-            </> : <><div className="visual-handoff-copy"><div><p>Final Script required</p></div><h2>No Script has arrived yet</h2><span>Finish Script and Voiceover first. Visual planning never starts automatically.</span></div><a href="/studio/scripts">Open Script →</a></>}
+            </> : <><div className="visual-handoff-copy"><div><p>Final Script required</p></div><h2>No Script has arrived yet</h2><span>Finish Script and Voiceover first. Visual planning never starts automatically.</span></div><a href="/studio/scripts" onClick={(e) => studioNavigate('/studio/scripts', e)}>Open Script →</a></>}
           </section>
 
           <section className="visual-direction-card">
@@ -1207,7 +1208,7 @@ export default function VisualsWorkspace() {
               {connections.length ? <>
                 <label><span>AI provider</span><div><b>{providerId ? providerMark(providerId) : '—'}</b><select value={providerId} onChange={(event) => changeProvider(event.target.value as ProviderId)}>{connections.map((connection) => <option value={connection.providerId} key={connection.providerId}>{connection.providerName}</option>)}</select></div></label>
                 <label><span>Model for Visuals</span><div><select value={modelId} onChange={(event) => changeModel(event.target.value)}>{activeConnection?.models.map((model) => <option value={model.id} key={model.id}>{model.name}</option>)}</select></div></label>
-              </> : <div className="visual-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Add one provider and select a model. Your API key remains in this browser.</small></div><a href="/studio/settings">Open Settings →</a></div>}
+              </> : <div className="visual-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Add one provider and select a model. Your API key remains in this browser.</small></div><a href="/studio/settings" onClick={(e) => studioNavigate('/studio/settings', e)}>Open Settings →</a></div>}
             </div>
 
             <section className="visual-duration-control" aria-label="Visual asset duration">
@@ -1233,7 +1234,7 @@ export default function VisualsWorkspace() {
 
             <details className="visual-optional"><summary>Optional direction for this Visual Plan <span>＋</span></summary><label><span>Only use this when one episode needs a special treatment. The continuity and evidence rules cannot be removed.</span><textarea value={direction} onChange={(event) => setDirection(event.target.value)} placeholder="Example: Keep the opening restrained and emphasize the winter landscape." /></label></details>
 
-            {!handoffReady ? <div className="visual-prerequisite"><span>!</span><div><strong>Current Voiceover required</strong><p>Prepare a Voiceover from the present Final Script so the clip timing and spoken order cannot drift.</p></div><a href="/studio/voiceover">Open Voiceover</a></div> : null}
+            {!handoffReady ? <div className="visual-prerequisite"><span>!</span><div><strong>Current Voiceover required</strong><p>Prepare a Voiceover from the present Final Script so the clip timing and spoken order cannot drift.</p></div><a href="/studio/voiceover" onClick={(e) => studioNavigate('/studio/voiceover', e)}>Open Voiceover</a></div> : null}
             {error ? <p className="visual-message error" role="alert"><span>!</span>{error}</p> : null}
             {buildStatus ? <p className="visual-message progress" role="status"><span>↻</span>{buildStatus}</p> : null}
             {notice ? <p className="visual-message success" role="status"><span>✓</span>{notice}</p> : null}
@@ -1292,7 +1293,7 @@ export default function VisualsWorkspace() {
             </section>
           </> : <section className="visual-empty"><div>▦</div><p>FINAL SCRIPT + VOICE TIMING READY</p><h2>No Visual Plan request has been sent.</h2><span>Review the handoff, choose the AI model, then click Build Visual Plan. A complete plan appears only after every clip passes.</span></section>}
 
-          <footer className="visual-next"><a href="/studio/voiceover"><span>Previous stage</span><strong>← Voiceover</strong></a><div><span>Current production idea</span><strong>{selectedIdea?.title ?? 'Nothing selected'}</strong></div><button type="button" disabled={!planCurrent || loading} onClick={continueToAudio}><span>{planCurrent ? 'Complete Visual Plan saved' : 'Build one current plan first'}</span><strong>Audio <i>→</i></strong></button></footer>
+          <footer className="visual-next"><a href="/studio/voiceover" onClick={(e) => studioNavigate('/studio/voiceover', e)}><span>Previous stage</span><strong>← Voiceover</strong></a><div><span>Current production idea</span><strong>{selectedIdea?.title ?? 'Nothing selected'}</strong></div><button type="button" disabled={!planCurrent || loading} onClick={continueToAudio}><span>{planCurrent ? 'Complete Visual Plan saved' : 'Build one current plan first'}</span><strong>Audio <i>→</i></strong></button></footer>
         </div>
       </section>
     </main>

@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import IdeasWorkspace from '../_components/ideas-workspace';
+import StudioRouter from '../_components/studio-router';
 
 export const metadata: Metadata = { title: 'Ideas — Arclane Creator Studio' };
 
 export default function IdeasPage() {
-  return <IdeasWorkspace />;
+  return <StudioRouter initialView="ideas" />;
 }

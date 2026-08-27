@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StudioStage, StudioStageId } from '../_lib/stages';
 import { getPreviousStage, studioStages } from '../_lib/stages';
+import { studioNavigate } from '../_lib/navigation';
 import StudioSidebar from './studio-sidebar';
 
 type ProviderId = 'openai' | 'anthropic' | 'gemini' | 'custom';
@@ -329,7 +330,7 @@ export default function StageWorkspace({ stage }: { stage: StudioStage }) {
       return;
     }
     saveDraft(false);
-    if (stage.nextPath) window.location.assign(`${stage.nextPath}?run=1`);
+    if (stage.nextPath) studioNavigate(stage.nextPath);
   }
 
   function clearWorkflow() {
@@ -381,7 +382,7 @@ export default function StageWorkspace({ stage }: { stage: StudioStage }) {
                   {stage.id === 'research' ? <div className={`automation-grounding ${providerId === 'custom' ? 'manual' : ''}`}><i />{providerId === 'custom' ? 'Verification plan' : 'Live web grounding'}</div> : null}
                 </>
               ) : (
-                <div className="automation-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Add an API provider and select at least one model. Your key stays in this browser and is never stored in a database.</small></div><a href="/studio/settings">Open Settings →</a></div>
+                <div className="automation-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Add an API provider and select at least one model. Your key stays in this browser and is never stored in a database.</small></div><a href="/studio/settings" onClick={(e) => studioNavigate('/studio/settings', e)}>Open Settings →</a></div>
               )}
             </div>
 
@@ -392,7 +393,7 @@ export default function StageWorkspace({ stage }: { stage: StudioStage }) {
 
             {!prerequisiteReady && previousStage ? (
               <div className="automation-prerequisite">
-                <span>←</span><div><strong>{stage.id === 'research' ? 'Choose an idea first' : `${previousStage.title} is not ready yet`}</strong><p>Complete the previous stage so its approved output can become this stage&apos;s context.</p></div><a href={`/studio/${previousStage.id}`}>Open {previousStage.title}</a>
+                <span>←</span><div><strong>{stage.id === 'research' ? 'Choose an idea first' : `${previousStage.title} is not ready yet`}</strong><p>Complete the previous stage so its approved output can become this stage&apos;s context.</p></div><a href={`/studio/${previousStage.id}`} onClick={(e) => studioNavigate(`/studio/${previousStage.id}`, e)}>Open {previousStage.title}</a>
               </div>
             ) : null}
 
@@ -449,7 +450,7 @@ export default function StageWorkspace({ stage }: { stage: StudioStage }) {
             {stage.nextPath && stage.nextLabel ? (
               <button type="button" onClick={goNext} disabled={loading || (stage.id === 'ideas' ? !workflow.selectedIdea : !draft.trim())}><span>Approve & continue</span><strong>{stage.nextLabel} <i>→</i></strong></button>
             ) : (
-              <a href="/studio"><span>Workflow complete</span><strong>Studio overview <i>→</i></strong></a>
+              <a href="/studio" onClick={(e) => studioNavigate('/studio', e)}><span>Workflow complete</span><strong>Studio overview <i>→</i></strong></a>
             )}
           </footer>
         </div>

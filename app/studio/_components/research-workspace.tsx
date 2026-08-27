@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StudioStageId } from '../_lib/stages';
+import { studioNavigate } from '../_lib/navigation';
 import ResearchDocumentView, { getResearchSignals, normalizeResearchMarkdown } from './research-document-view';
 import StudioSidebar from './studio-sidebar';
 
@@ -404,7 +405,7 @@ export default function ResearchWorkspace() {
         if (options.continueWhenReady) {
           const nextIssues = getResearchHandoffIssues(record, record.content, combinedSources);
           if (!nextIssues.length) {
-            window.location.assign('/studio/scripts');
+            studioNavigate('/studio/scripts');
             return;
           }
           setError('Automatic verification finished, but the selected service did not return a complete and traceable evidence base. Nothing was sent to Script. Try Firecrawl or another search-capable model.');
@@ -525,7 +526,7 @@ export default function ResearchWorkspace() {
       return;
     }
     if (!saveDraft(false)) return;
-    window.location.assign('/studio/scripts');
+    studioNavigate('/studio/scripts');
   }
 
   return (
@@ -560,10 +561,10 @@ export default function ResearchWorkspace() {
                   <div><span>Video type</span><strong>{selectedIdea.everydayLens || 'Everyday life'}</strong></div>
                 </div> : <span className="research-idea-confirmation">The original selected topic is here. Review its full context before starting Research.</span>}
               </div>
-              <div className="research-idea-actions"><button type="button" aria-expanded={ideaOpen} onClick={() => setIdeaOpen((open) => !open)}>{ideaOpen ? 'Hide full idea' : 'View full idea'}</button><a href="/studio/ideas">Change idea</a></div>
+              <div className="research-idea-actions"><button type="button" aria-expanded={ideaOpen} onClick={() => setIdeaOpen((open) => !open)}>{ideaOpen ? 'Hide full idea' : 'View full idea'}</button><a href="/studio/ideas" onClick={(e) => studioNavigate('/studio/ideas', e)}>Change idea</a></div>
             </> : <>
               <div><p>Research requires one decision</p><h2>No production idea selected</h2><span>Choose one idea first so Research receives a precise subject instead of guessing.</span></div>
-              <a href="/studio/ideas">Choose an idea →</a>
+              <a href="/studio/ideas" onClick={(e) => studioNavigate('/studio/ideas', e)}>Choose an idea →</a>
             </>}
           </section>
 
@@ -580,12 +581,12 @@ export default function ResearchWorkspace() {
                     <button type="button" role="switch" aria-checked={webSearchEnabled} disabled={!webSearchCapable} onClick={toggleWebSearch} aria-label="Toggle Native Live Search"><i /></button>
                   </div>
                   <div className={`research-search-control external${firecrawlApiKey ? externalEvidenceActive ? ' enabled' : ' disabled' : ' unavailable'}`}>
-                    <div><i /><span><strong>{firecrawlApiKey ? externalEvidenceActive ? 'External Evidence on' : 'External Evidence off' : 'External Evidence unavailable'}</strong><small>{firecrawlApiKey ? externalEvidenceActive ? 'Firecrawl searches first · native search stays off' : 'Firecrawl evidence pack · Research only' : <>Connect Firecrawl in <a href="/studio/settings">Settings</a></>}</small></span></div>
+                    <div><i /><span><strong>{firecrawlApiKey ? externalEvidenceActive ? 'External Evidence on' : 'External Evidence off' : 'External Evidence unavailable'}</strong><small>{firecrawlApiKey ? externalEvidenceActive ? 'Firecrawl searches first · native search stays off' : 'Firecrawl evidence pack · Research only' : <>Connect Firecrawl in <a href="/studio/settings" onClick={(e) => studioNavigate('/studio/settings', e)}>Settings</a></>}</small></span></div>
                     <button type="button" role="switch" aria-checked={externalEvidenceActive} disabled={!firecrawlApiKey} onClick={toggleExternalEvidence} aria-label="Toggle Firecrawl External Evidence"><i /></button>
                   </div>
                 </div>
               </div>
-            ) : <div className="research-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Connect a provider and select a model before building the research brief.</small></div><a href="/studio/settings">Open Settings →</a></div>}
+            ) : <div className="research-no-model"><span>◇</span><div><strong>No AI model connected</strong><small>Connect a provider and select a model before building the research brief.</small></div><a href="/studio/settings" onClick={(e) => studioNavigate('/studio/settings', e)}>Open Settings →</a></div>}
 
             <div className="research-method" aria-label="Automatic research method">
               <div><span>01</span><strong>Define scope</strong><small>Time, place and people</small></div><i />
@@ -634,7 +635,7 @@ export default function ResearchWorkspace() {
           ) : <section className="research-empty"><div>⌕</div><p>READY FOR EVIDENCE</p><h2>The selected idea will become a fact map—not a premature script.</h2><span>Scope, verified claims, uncertainty, material life, source trails and an evidence-led story direction will appear here.</span></section>}
 
           <footer className="research-next">
-            <a href="/studio/ideas"><span>Previous stage</span><strong>← Ideas</strong></a>
+            <a href="/studio/ideas" onClick={(e) => studioNavigate('/studio/ideas', e)}><span>Previous stage</span><strong>← Ideas</strong></a>
             <div><span>Current production idea</span><strong>{selectedIdea?.title ?? 'Nothing selected'}</strong></div>
             <button type="button" disabled={!activeRecord || loading} onClick={() => void continueToScript()}><span>{loading ? 'Working automatically…' : researchReadyForScript ? 'Continue automatically' : automaticRepairLabel}</span><strong>Script <i>→</i></strong></button>
           </footer>

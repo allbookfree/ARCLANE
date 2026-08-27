@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import type { StudioStageId } from '../_lib/stages';
+import { studioNavigate } from '../_lib/navigation';
 import StudioSidebar from './studio-sidebar';
 
 type Idea = {
@@ -248,7 +249,7 @@ export default function MemoryWorkspace() {
       ideaBatches: batches.some((item) => item.id === batch.id) ? batches : [batch, ...batches],
       savedIdeas,
     };
-    if (persistWorkflow(next)) window.location.assign('/studio/ideas');
+    if (persistWorkflow(next)) studioNavigate('/studio/ideas');
   }
 
   function removeIdea() {
@@ -357,7 +358,7 @@ export default function MemoryWorkspace() {
           <section className="memory-library">
             <header>
               <div><p>Saved subjects</p><h2>Idea Library</h2><span>Only five records appear at first, keeping this workspace calm even after years of use.</span></div>
-              <a href="/studio/ideas">＋ Discover new ideas</a>
+              <a href="/studio/ideas" onClick={(e) => studioNavigate('/studio/ideas', e)}>＋ Discover new ideas</a>
             </header>
 
             <div className="memory-toolbar">
@@ -400,7 +401,7 @@ export default function MemoryWorkspace() {
                   </footer>
                 </>
               ) : <div className="memory-empty"><span>⌕</span><strong>No matching ideas</strong><p>Try a different search phrase or status filter.</p><button type="button" onClick={() => resetList('', 'all')}>Clear filters</button></div>
-            ) : <div className="memory-empty"><span>✦</span><strong>Your long-term memory starts with one saved idea.</strong><p>Generate ideas, then use Save on the subjects you want protected from future duplication.</p><a href="/studio/ideas">Go to Ideas →</a></div>}
+            ) : <div className="memory-empty"><span>✦</span><strong>Your long-term memory starts with one saved idea.</strong><p>Generate ideas, then use Save on the subjects you want protected from future duplication.</p><a href="/studio/ideas" onClick={(e) => studioNavigate('/studio/ideas', e)}>Go to Ideas →</a></div>}
           </section>
 
           {deleteTarget ? (

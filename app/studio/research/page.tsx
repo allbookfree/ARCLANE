@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import ResearchWorkspace from '../_components/research-workspace';
+import StudioRouter from '../_components/studio-router';
 
 export const metadata: Metadata = { title: 'Research — Arclane Creator Studio' };
 
 export default function ResearchPage() {
-  return <ResearchWorkspace />;
+  return <StudioRouter initialView="research" />;
 }

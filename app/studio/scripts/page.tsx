@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import ScriptWorkspace from '../_components/script-workspace';
+import StudioRouter from '../_components/studio-router';
 
 export const metadata: Metadata = { title: 'Scripts — Arclane Creator Studio' };
 
 export default function ScriptsPage() {
-  return <ScriptWorkspace />;
+  return <StudioRouter initialView="scripts" />;
 }

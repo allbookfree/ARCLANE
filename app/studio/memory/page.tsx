@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import MemoryWorkspace from '../_components/memory-workspace';
+import StudioRouter from '../_components/studio-router';
 
 export const metadata: Metadata = { title: 'Idea Memory — Arclane Creator Studio' };
 
 export default function MemoryPage() {
-  return <MemoryWorkspace />;
+  return <StudioRouter initialView="memory" />;
 }

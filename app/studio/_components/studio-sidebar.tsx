@@ -1,5 +1,6 @@
 import type { StudioStage } from '../_lib/stages';
 import { studioStages } from '../_lib/stages';
+import { studioNavigate } from '../_lib/navigation';
 
 type StudioSidebarProps = {
   activeStageId?: StudioStage['id'];
@@ -15,7 +16,11 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
         <div><strong>ARCLANE</strong><small>Creator Studio</small></div>
       </a>
 
-      <a className="module-overview-link" href="/studio">
+      <a
+        className="module-overview-link"
+        href="/studio"
+        onClick={(e) => studioNavigate('/studio', e)}
+      >
         <span aria-hidden="true">⌂</span> Studio overview
       </a>
 
@@ -27,6 +32,7 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
             href={`/studio/${item.id}`}
             aria-current={item.id === activeStageId ? 'page' : undefined}
             key={item.id}
+            onClick={(e) => studioNavigate(`/studio/${item.id}`, e)}
           >
             <span>{item.number}</span>
             <strong>{item.title}</strong>
@@ -39,12 +45,18 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
         className={`module-settings-link${memoryActive ? ' active' : ''}`}
         href="/studio/memory"
         aria-current={memoryActive ? 'page' : undefined}
+        onClick={(e) => studioNavigate('/studio/memory', e)}
       >
         <span aria-hidden="true">▤</span>
         <strong>Idea Memory</strong>
       </a>
 
-      <a className="module-settings-link" href="/studio/settings#new-video-reset" style={{ marginTop: 2 }}>
+      <a
+        className="module-settings-link"
+        href="/studio/settings#new-video-reset"
+        style={{ marginTop: 2 }}
+        onClick={(e) => studioNavigate('/studio/settings#new-video-reset', e)}
+      >
         <span aria-hidden="true">＋</span>
         <strong>New video</strong>
       </a>
@@ -53,6 +65,7 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
         href="/studio/settings"
         aria-current={settingsActive ? 'page' : undefined}
         style={{ marginTop: 2 }}
+        onClick={(e) => studioNavigate('/studio/settings', e)}
       >
         <span aria-hidden="true">⚙</span>
         <strong>Settings</strong>
