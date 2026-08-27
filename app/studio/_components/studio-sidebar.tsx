@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import type { StudioStage } from '../_lib/stages';
 import { studioStages } from '../_lib/stages';
 import { studioNavigate } from '../_lib/navigation';
@@ -19,23 +18,23 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
   return (
     <>
       <aside className="module-rail">
-        <Link className="module-brand" href="/" aria-label="Back to Arclane homepage">
+        <a className="module-brand" href="/" aria-label="Back to Arclane homepage">
           <span>A</span>
           <div><strong>ARCLANE</strong><small>Creator Studio</small></div>
-        </Link>
+        </a>
 
-        <Link
+        <a
           className="module-overview-link"
           href="/studio"
           onClick={(e) => studioNavigate('/studio', e)}
         >
           <span aria-hidden="true">⌂</span> Channels Hub
-        </Link>
+        </a>
 
         <div className="module-sequence-label">Production sequence</div>
         <div className="module-sequence" aria-label="Production sequence">
           {studioStages.map((item) => (
-            <Link
+            <a
               className={item.id === activeStageId ? 'active' : ''}
               href={`/studio/${item.id}`}
               aria-current={item.id === activeStageId ? 'page' : undefined}
@@ -45,11 +44,11 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
               <span>{item.number}</span>
               <strong>{item.title}</strong>
               <i />
-            </Link>
+            </a>
           ))}
         </div>
 
-        <Link
+        <a
           className={`module-settings-link${memoryActive ? ' active' : ''}`}
           href="/studio/memory"
           aria-current={memoryActive ? 'page' : undefined}
@@ -57,7 +56,7 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
         >
           <span aria-hidden="true">▤</span>
           <strong>Idea Memory</strong>
-        </Link>
+        </a>
 
         <button
           type="button"
@@ -69,7 +68,7 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
           <strong>New video</strong>
         </button>
 
-        <Link
+        <a
           className={`module-settings-link${settingsActive ? ' active' : ''}`}
           href="/studio/settings"
           aria-current={settingsActive ? 'page' : undefined}
@@ -78,7 +77,7 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
         >
           <span aria-hidden="true">⚙</span>
           <strong>Settings</strong>
-        </Link>
+        </a>
       </aside>
 
       <NewVideoModal

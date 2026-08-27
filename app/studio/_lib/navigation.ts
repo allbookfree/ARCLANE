@@ -45,17 +45,17 @@ export function studioNavigate(href: string, event?: React.MouseEvent | MouseEve
     return;
   }
 
-  if (event) {
-    event.preventDefault();
-  }
-
   const [pathAndQuery, hash] = href.split('#');
   const targetPath = pathAndQuery || '/studio';
   const currentPath = window.location.pathname + window.location.search;
   const currentHash = window.location.hash;
   const targetHash = hash ? `#${hash}` : '';
 
-  if (href.startsWith('/studio')) {
+  if (window.location.pathname.startsWith('/studio') && targetPath.startsWith('/studio')) {
+    if (event) {
+      event.preventDefault();
+    }
+
     if (currentPath !== targetPath || currentHash !== targetHash) {
       window.history.pushState(null, '', href);
     }
@@ -78,6 +78,8 @@ export function studioNavigate(href: string, event?: React.MouseEvent | MouseEve
       window.scrollTo({ top: 0, left: 0 });
     }
   } else {
-    window.location.assign(href);
+    if (!event) {
+      window.location.assign(href);
+    }
   }
 }

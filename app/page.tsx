@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import './home.css';
 
 const stageDemos = [
@@ -131,13 +130,13 @@ export default function Home() {
           <a href="#pipeline">The 9 Stages</a>
           <a href="#features">Features</a>
           <a href="#faq">FAQ</a>
-          <Link href="/studio">Channel Hub</Link>
+          <a href="/studio">Channel Hub</a>
         </nav>
 
-        <Link className="home-cta-btn" href="/studio">
+        <a className="home-cta-btn" href="/studio">
           <span>Launch Studio</span>
           <i>→</i>
-        </Link>
+        </a>
       </header>
 
       {/* Hero Section */}
@@ -160,10 +159,10 @@ export default function Home() {
           </p>
 
           <div className="home-hero-actions">
-            <Link className="btn-primary" href="/studio">
+            <a className="btn-primary" href="/studio">
               <span>Launch Creator Studio</span>
               <i>→</i>
-            </Link>
+            </a>
             <a className="btn-secondary" href="#pipeline-preview">
               <span>Explore Interactive Pipeline</span>
               <i>↓</i>
@@ -434,10 +433,10 @@ export default function Home() {
           <p>
             Enter your channel studio and run the complete 9-stage connected production pipeline today.
           </p>
-          <Link className="btn-primary" href="/studio">
+          <a className="btn-primary" href="/studio">
             <span>Launch Creator Studio</span>
             <i>→</i>
-          </Link>
+          </a>
         </div>
       </section>
 
@@ -453,7 +452,7 @@ export default function Home() {
           <a href="#pipeline">The 9 Stages</a>
           <a href="#features">Features</a>
           <a href="#faq">FAQ</a>
-          <Link href="/studio">Channel Hub</Link>
+          <a href="/studio">Channel Hub</a>
           <a href="#top">Back to top ↑</a>
         </div>
 

@@ -20,7 +20,12 @@ type StudioRouterProps = {
 };
 
 export default function StudioRouter({ initialView = 'overview' }: StudioRouterProps) {
-  const [view, setView] = useState<StudioView>(initialView);
+  const [view, setView] = useState<StudioView>(() => {
+    if (typeof window !== 'undefined') {
+      return getStudioViewFromPath(window.location.pathname);
+    }
+    return initialView;
+  });
 
   useEffect(() => {
     const currentPathView = getStudioViewFromPath(window.location.pathname);

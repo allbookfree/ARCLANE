@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { defaultChannels } from '../_lib/channels';
 import { studioNavigate } from '../_lib/navigation';
 
@@ -8,15 +7,15 @@ export default function StudioOverview() {
   return (
     <main className="studio-hub">
       <header className="studio-hub-header">
-        <Link className="studio-hub-brand" href="/">
+        <a className="studio-hub-brand" href="/">
           <span>A</span>
           <strong>ARCLANE</strong>
           <i>/</i>
           <small>Studio</small>
-        </Link>
-        <Link className="studio-hub-back" href="/">
+        </a>
+        <a className="studio-hub-back" href="/">
           Website ↗
-        </Link>
+        </a>
       </header>
 
       <div className="studio-hub-container">
@@ -51,14 +50,14 @@ export default function StudioOverview() {
                 <span>{channel.language}</span>
               </div>
 
-              <Link
+              <a
                 href={channel.route}
                 className="channel-action-btn"
                 onClick={(e) => studioNavigate(channel.route, e)}
               >
                 <span>Open Studio</span>
                 <i>→</i>
-              </Link>
+              </a>
             </article>
           ))}
         </section>
