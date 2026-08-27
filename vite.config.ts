@@ -55,6 +55,10 @@ export default defineConfig(async () => {
         ...nitro({
           preset: 'vercel',
           vercel: {
+            functions: {
+              runtime: 'nodejs22.x',
+              maxDuration: vercelMaxDuration,
+            },
             functionRules: {
               '/api/**': { maxDuration: vercelMaxDuration },
             },

@@ -114,5 +114,8 @@ On 2026-08-25, the confusing stale-output warning and exact-word rejection gate 
 
 On 2026-08-25, the final Voiceover prompt audit incorporated current official TTS guidance without changing the simple UI: Normal now has semantic punctuation rules; Advanced first maps the complete story arc, uses punctuation before tags, supports current pause/delivery cues, limits stacking and restrains nonverbal reactions. Prompt tests, focused lint, TypeScript and production build passed.
 
-On 2026-08-25, the dedicated Visuals workspace, deterministic 6–8 second manifest, strict complete-plan parser, hybrid evidence-led visual protocol, continuity/character system and production-card interface passed focused ESLint, full TypeScript validation and the complete production build. The restarted local Visuals route returned HTTP 200. No saved provider key, generation credit or external research credit was used during validation.
+On 2026-08-27, fixed the Vercel hosting issue where Studio and generation stages failed on live deployment:
+- Resolved Node.js 24 vs Vercel Serverless runtime mismatch: updated `package.json` engines to `>=20.0.0` and explicitly configured Nitro Vercel functions to use `runtime: 'nodejs22.x'` with `maxDuration` applied to both base serverless functions and `/api/**` route handlers.
+- Hardened `app/layout.tsx` `metadataBase` to safely normalize protocol headers when `NEXT_PUBLIC_SITE_URL` or `VERCEL_URL` is set without `https://`.
+- Full TypeScript validation (`tsc --noEmit`), build verification (`NITRO_PRESET=vercel npm run vercel-build`), and function config inspection (`.vc-config.json`) passed cleanly.
 
