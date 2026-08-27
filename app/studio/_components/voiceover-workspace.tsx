@@ -363,10 +363,6 @@ export default function VoiceoverWorkspace() {
     studioNavigate('/studio/visuals');
   }
 
-  if (!hydrated) {
-    return <main className="module-shell module-cyan voice-shell"><StudioSidebar activeStageId="voiceover" /><section className="module-main"><div className="voice-loading">Loading the final Script…</div></section></main>;
-  }
-
   return (
     <main className="module-shell module-cyan voice-shell">
       <StudioSidebar activeStageId="voiceover" />

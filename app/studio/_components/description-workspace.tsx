@@ -456,10 +456,6 @@ export default function DescriptionWorkspace() {
     studioNavigate('/studio/shorts');
   }
 
-  if (!hydrated) {
-    return <main className="module-shell module-blue description-shell"><StudioSidebar activeStageId="description" /><section className="module-main"><div className="description-loading">Loading your Titles & Description…</div></section></main>;
-  }
-
   const titleCard = (option: TitleOption, finalist: boolean) => {
     const recommended = option.id === plan?.recommendedTitleId;
     const selected = option.id === selectedTitleId;

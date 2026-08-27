@@ -130,7 +130,7 @@ export default function NewVideoReset() {
         <div className="new-video-mark">NEW</div>
         <div className="new-video-copy"><strong>{hasCurrentProject ? selectedTitle || 'Current video workspace' : 'The workspace is already clean'}</strong><p>{hasCurrentProject ? `${Object.keys(stages).length} completed section${Object.keys(stages).length === 1 ? '' : 's'} and ${batches.length} generated Idea batch${batches.length === 1 ? '' : 'es'} will be removed.` : 'There is no selected Idea or generated production to remove.'}</p></div>
         <div className="new-video-kept"><span>KEPT SAFE</span><strong>API connections &amp; research key</strong><strong>{savedIdeas.length} Memory idea{savedIdeas.length === 1 ? '' : 's'}</strong></div>
-        <button type="button" disabled={!hasCurrentProject} onClick={() => { setError(''); setDialogOpen(true); }}>Delete current video &amp; start new</button>
+        <button type="button" onClick={() => { setError(''); setDialogOpen(true); }}>Start New Video Project</button>
       </div>
 
       <div className="new-video-policy"><span>✓</span><p><strong>Duplicate protection stays active</strong><small>The current selected Idea is automatically marked “Video made” in Memory before the production is cleared. API keys, including the research key, remain on this device.</small></p></div>

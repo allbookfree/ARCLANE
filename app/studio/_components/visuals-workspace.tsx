@@ -1173,10 +1173,6 @@ export default function VisualsWorkspace() {
     studioNavigate('/studio/audio');
   }
 
-  if (!hydrated) {
-    return <main className="module-shell module-green visual-shell"><StudioSidebar activeStageId="visuals" /><section className="module-main"><div className="visual-loading">Loading the production handoff…</div></section></main>;
-  }
-
   return (
     <main className="module-shell module-green visual-shell">
       <StudioSidebar activeStageId="visuals" />

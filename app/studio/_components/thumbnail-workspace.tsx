@@ -504,10 +504,6 @@ export default function ThumbnailWorkspace() {
     studioNavigate('/studio/description');
   }
 
-  if (!hydrated) {
-    return <main className="module-shell module-pink thumbnail-shell"><StudioSidebar activeStageId="thumbnails" /><section className="module-main"><div className="thumbnail-loading">Loading the Thumbnail handoff…</div></section></main>;
-  }
-
   return (
     <main className="module-shell module-pink thumbnail-shell">
       <StudioSidebar activeStageId="thumbnails" />

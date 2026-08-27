@@ -1,13 +1,12 @@
 .idea-pro-shell {
   --idea-navy: #0a1428;
-  --idea-blue: #2457ef;
-  --idea-blue-deep: #1744c9;
-  --idea-line: #dfe4ec;
-  --idea-muted: #667085;
-  --idea-pale: #eef3ff;
-  background:
-    radial-gradient(circle at 76% 4%, rgba(36, 87, 239, .07), transparent 26rem),
-    #f4f6f9;
+  --idea-blue: #2563eb;
+  --idea-blue-deep: #1d4ed8;
+  --idea-line: #e2e8f0;
+  --idea-muted: #64748b;
+  --idea-pale: #eff6ff;
+  background: #f4f6fa;
+  color: #0a1428;
 }
 
 .idea-pro-content {
@@ -38,7 +37,7 @@
 
 .idea-pro-heading h1 {
   margin: 0;
-  color: var(--idea-navy);
+  color: #0a1428;
   font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(46px, 5.5vw, 76px);
   font-weight: 400;
@@ -62,8 +61,8 @@
   overflow: hidden;
   border: 1px solid var(--idea-line);
   border-radius: 16px;
-  background: rgba(255, 255, 255, .82);
-  box-shadow: 0 12px 34px rgba(10, 20, 40, .05);
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(10, 20, 40, 0.04);
 }
 
 .idea-pro-stats div {
@@ -76,7 +75,7 @@
 }
 
 .idea-pro-stats div:first-child { border-left: 0; }
-.idea-pro-stats strong { font-family: Georgia, serif; font-size: 28px; font-weight: 500; }
+.idea-pro-stats strong { font-family: Georgia, serif; font-size: 28px; font-weight: 500; color: #0a1428; }
 .idea-pro-stats span { margin-top: 5px; color: var(--idea-muted); font-size: 11px; font-weight: 700; }
 
 .idea-pro-scope {
@@ -87,13 +86,13 @@
   overflow: hidden;
   position: relative;
   padding: 25px 28px;
-  border: 1px solid rgba(255, 255, 255, .09);
+  border: 1px solid #bfdbfe;
   border-radius: 20px;
   background:
-    radial-gradient(circle at 90% 10%, rgba(91, 131, 255, .35), transparent 22rem),
+    radial-gradient(circle at 90% 10%, rgba(91, 131, 255, .15), transparent 22rem),
     linear-gradient(135deg, #071126, #102763 75%, #173eaf);
   color: #fff;
-  box-shadow: 0 22px 54px rgba(10, 20, 40, .17);
+  box-shadow: 0 16px 40px rgba(10, 20, 40, 0.12);
 }
 
 .idea-pro-scope::after {
@@ -122,7 +121,7 @@
 }
 
 .idea-pro-scope p { margin-bottom: 5px; color: #9cb6ff; font-size: 10px; }
-.idea-pro-scope h2 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+.idea-pro-scope h2 { margin: 0; font-size: 20px; letter-spacing: -.02em; color: #ffffff; }
 .idea-pro-scope > div:nth-child(2) > span { display: block; margin-top: 7px; color: #c6d2ed; font-size: 13px; line-height: 1.5; }
 .idea-pro-scope-tags { z-index: 1; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .idea-pro-scope-tags span { padding: 7px 10px; border: 1px solid rgba(255, 255, 255, .17); border-radius: 999px; background: rgba(255, 255, 255, .08); color: #e9efff; font-size: 10px; font-weight: 750; }
@@ -135,8 +134,9 @@
   margin-top: 24px;
   border: 1px solid var(--idea-line);
   border-radius: 20px;
-  background: #fff;
-  box-shadow: 0 15px 45px rgba(10, 20, 40, .055);
+  background: #ffffff;
+  box-shadow: 0 10px 30px rgba(10, 20, 40, 0.04);
+  color: #0a1428;
 }
 
 .idea-pro-panel { overflow: hidden; }
@@ -148,6 +148,7 @@
   gap: 24px;
   padding: 24px 27px;
   border-bottom: 1px solid var(--idea-line);
+  background: #f8fafc;
 }
 
 .idea-pro-panel > header > div,
@@ -168,15 +169,15 @@
 .idea-pro-panel > header p,
 .idea-pro-panel > header h2 { margin: 0; }
 .idea-pro-panel > header p { color: var(--idea-blue); font-size: 10px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
-.idea-pro-panel > header h2 { margin-top: 3px; font-size: 18px; letter-spacing: -.02em; }
-.idea-pro-panel > header > strong { display: flex; align-items: center; gap: 8px; color: #4e5b70; font-size: 11px; }
+.idea-pro-panel > header h2 { margin-top: 3px; font-size: 18px; letter-spacing: -.02em; color: #0a1428; }
+.idea-pro-panel > header > strong { display: flex; align-items: center; gap: 8px; color: #64748b; font-size: 11px; }
 .idea-pro-panel > header > strong i,
 .idea-pro-web-badge i {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: #18a66d;
-  box-shadow: 0 0 0 4px rgba(24, 166, 109, .11);
+  box-shadow: 0 0 0 4px rgba(24, 166, 109, .15);
 }
 
 .idea-pro-models {
@@ -189,7 +190,7 @@
 
 .idea-pro-models label,
 .idea-pro-filters label,
-.idea-pro-direction { display: grid; gap: 8px; color: #3d495c; font-size: 11px; font-weight: 800; }
+.idea-pro-direction { display: grid; gap: 8px; color: #334155; font-size: 11.5px; font-weight: 800; }
 .idea-pro-models label > div { position: relative; }
 .idea-pro-models label b {
   width: 28px;
@@ -201,7 +202,7 @@
   top: 8px;
   z-index: 1;
   border-radius: 8px;
-  background: var(--idea-navy);
+  background: #2563eb;
   color: #fff;
   font-size: 9px;
 }
@@ -213,14 +214,22 @@
   width: 100%;
   height: 44px;
   padding: 0 38px 0 13px;
-  border: 1px solid #d8dee8;
-  border-radius: 11px;
   outline: 0;
-  background: #fafbfd;
-  color: var(--idea-navy);
+  border: 1px solid #cbd5e1;
+  border-radius: 11px;
+  background: #ffffff;
+  color: #0a1428;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
+}
+
+.idea-pro-models select option,
+.idea-pro-filters select option,
+.idea-pro-results > header select option {
+  background: #ffffff;
+  color: #0a1428;
 }
 
 .idea-pro-models select:focus,

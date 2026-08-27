@@ -536,10 +536,6 @@ export default function AudioWorkspace() {
     studioNavigate('/studio/thumbnails');
   }
 
-  if (!hydrated) {
-    return <main className="module-shell module-amber audio-shell"><StudioSidebar activeStageId="audio" /><section className="module-main"><div className="audio-loading">Loading the production handoff…</div></section></main>;
-  }
-
   return (
     <main className="module-shell module-amber audio-shell">
       <StudioSidebar activeStageId="audio" />

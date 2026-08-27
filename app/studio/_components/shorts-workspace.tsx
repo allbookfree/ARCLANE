@@ -312,8 +312,6 @@ export default function ShortsWorkspace() {
     setNotice(`Short ${activeSlot} backup downloaded.`);
   }
 
-  if (!hydrated) return <main className="module-shell module-lime shorts-shell"><StudioSidebar activeStageId="shorts" /><section className="module-main"><div className="shorts-loading">Loading your Shorts workspace…</div></section></main>;
-
   return <main className="module-shell module-lime shorts-shell">
     <StudioSidebar activeStageId="shorts" />
     <section className="module-main">
