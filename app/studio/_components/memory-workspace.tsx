@@ -164,6 +164,7 @@ export default function MemoryWorkspace() {
   function persistWorkflow(next: WorkflowState) {
     try {
       window.localStorage.setItem(workflowStorageKey, JSON.stringify(next));
+      window.dispatchEvent(new Event('arclane:workflow-changed'));
       setWorkflow(next);
       return true;
     } catch {
@@ -228,7 +229,16 @@ export default function MemoryWorkspace() {
     const batch: IdeaBatch = sourceBatch ?? {
       id: `memory-${Date.now()}`,
       ideas: [{ ...saved.idea }],
-      content: JSON.stringify({ ideas: [saved.idea] }),
+      content: [
+        JSON.stringify({ ideas: [saved.idea] }),
+        '',
+        'MEMORY IDEA',
+        `Title: ${saved.idea.title}`,
+        `Premise: ${saved.idea.premise}`,
+        `Region: ${saved.idea.region || 'Global'}`,
+        `Period: ${saved.idea.period || 'Any period'}`,
+        `Everyday lens: ${saved.idea.everydayLens || 'Everyday life'}`,
+      ].join('\n'),
       grounded: false,
       providerName: 'Idea Memory',
       modelName: 'Portable library',

@@ -1,7 +1,7 @@
 'use client';
 
 import { jsonrepair } from 'jsonrepair';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { studioNavigate } from '../_lib/navigation';
 import { getSpokenScriptText } from './script-document-view';
 import StudioSidebar from './studio-sidebar';
@@ -132,35 +132,39 @@ function normalizeWords(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-function parseDescriptionPlan(content: string, thumbnailHeadline: string): DescriptionPlan {
+function parseDescriptionPlan(content: string, thumbnailHeadline: string): { plan: DescriptionPlan; droppedTitles: number } {
   const root = parseJsonObject(content, 'Titles & Description');
   if (stringValue(root.version) !== planVersion) throw new Error('The AI returned an older format. Your saved work is unchanged; click Create Titles & Description again.');
 
   const rawTitles = Array.isArray(root.titles) ? root.titles : [];
-  if (rawTitles.length !== 3) throw new Error(`The AI returned ${rawTitles.length} title choices instead of 3. Your saved result is unchanged; try once more.`);
-  const titles = rawTitles.map((value, index): TitleOption => {
+  // Salvage instead of total discard: incomplete, oversized or duplicated
+  // choices are dropped; a valid pair still ships with a clear notice.
+  const seenTitles = new Set<string>();
+  const titles: TitleOption[] = [];
+  let droppedTitles = 0;
+  for (const value of rawTitles) {
     const item = asRecord(value);
     const title = stringValue(item.title).replace(/\s+/g, ' ');
     const fit = stringValue(item.trafficFit) as TrafficFit;
-    const option: TitleOption = {
-      id: `TITLE-${String(index + 1).padStart(2, '0')}`,
+    const complete = title && title.length <= 100 && stringValue(item.angle) && stringValue(item.primarySearchPhrase) && stringValue(item.promise) && stringValue(item.thumbnailFit);
+    const distinct = !(thumbnailHeadline && normalizeWords(title) === normalizeWords(thumbnailHeadline));
+    if (!complete || !distinct || seenTitles.has(normalizeWords(title))) {
+      droppedTitles += 1;
+      continue;
+    }
+    seenTitles.add(normalizeWords(title));
+    titles.push({
+      id: `TITLE-${String(titles.length + 1).padStart(2, '0')}`,
       title,
       angle: stringValue(item.angle),
       trafficFit: trafficFits.has(fit) ? fit : 'balanced',
       primarySearchPhrase: stringValue(item.primarySearchPhrase),
       promise: stringValue(item.promise),
       thumbnailFit: stringValue(item.thumbnailFit),
-    };
-    if (!option.title || option.title.length > 100 || !option.angle || !option.primarySearchPhrase || !option.promise || !option.thumbnailFit) {
-      throw new Error(`Title choice ${index + 1} is incomplete or longer than YouTube's 100-character limit. Nothing was replaced.`);
-    }
-    if (thumbnailHeadline && normalizeWords(option.title) === normalizeWords(thumbnailHeadline)) {
-      throw new Error(`Title choice ${index + 1} repeats the Thumbnail headline. Nothing was replaced; the title and Thumbnail must complement each other.`);
-    }
-    return option;
-  });
-  if (new Set(titles.map((item) => normalizeWords(item.title))).size !== 3) {
-    throw new Error('The AI repeated a title choice. Your saved result is unchanged; try once more.');
+    });
+  }
+  if (titles.length < 2) {
+    throw new Error(`The AI returned only ${titles.length} usable title choice${titles.length === 1 ? '' : 's'} (from ${rawTitles.length}). Your saved result is unchanged; try once more or choose another model.`);
   }
 
   const titleIds = new Set(titles.map((item) => item.id));
@@ -171,25 +175,26 @@ function parseDescriptionPlan(content: string, thumbnailHeadline: string): Descr
   const openingLines = stringList(rawDescription.openingLines, 2);
   const body = stringValue(rawDescription.body);
   const bodyWords = body.split(/\s+/).filter(Boolean).length;
-  if (openingLines.length !== 2 || !body || bodyWords < 70 || bodyWords > 220) {
+  if (!openingLines.length || !body || bodyWords < 70 || bodyWords > 220) {
     throw new Error('The public description was incomplete or unnecessarily long. Your saved result is unchanged; try once more.');
   }
 
   const publicLength = openingLines.join('\n').length + body.length + 2;
   if (publicLength > 5000) throw new Error("The public description exceeds YouTube's 5,000-character limit. Your saved result is unchanged.");
 
-  return {
+  const plan: DescriptionPlan = {
     version: planVersion,
     recommendedTitleId,
     recommendationReason: stringValue(root.recommendationReason) || 'Strongest truthful balance of clarity, curiosity and selected-Thumbnail fit.',
     titles,
     description: { openingLines, body },
   };
+  return { plan, droppedTitles };
 }
 
-function readSavedPlan(content: string, thumbnailHeadline: string) {
+function readSavedPlan(content: string, thumbnailHeadline: string): DescriptionPlan | null {
   try {
-    return parseDescriptionPlan(content, thumbnailHeadline);
+    return parseDescriptionPlan(content, thumbnailHeadline).plan;
   } catch {
     return null;
   }
@@ -257,6 +262,15 @@ export default function DescriptionWorkspace() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!loading) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => { setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)); }, 1000);
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   const selectedIdea = workflow.selectedIdea;
   const researchRecord = workflow.stages.research;
@@ -283,6 +297,7 @@ export default function DescriptionWorkspace() {
     try {
       window.localStorage.setItem(workflowStorageKey, JSON.stringify(next));
       setWorkflow(next);
+      window.dispatchEvent(new Event('arclane:workflow-changed'));
       return true;
     } catch {
       setError('This browser could not save the result. Download or clear older local data, then try again.');
@@ -293,7 +308,7 @@ export default function DescriptionWorkspace() {
   const savePreference = useCallback((nextProviderId: ProviderId, nextModelId: string) => {
     const preferences = readJson<Record<string, ModelPreference>>(modelPreferenceKey, {});
     preferences.description = { providerId: nextProviderId, modelId: nextModelId };
-    window.localStorage.setItem(modelPreferenceKey, JSON.stringify(preferences));
+    try { window.localStorage.setItem(modelPreferenceKey, JSON.stringify(preferences)); } catch { /* preference saving is best-effort */ }
   }, []);
 
   useEffect(() => {
@@ -360,6 +375,8 @@ export default function DescriptionWorkspace() {
       setError('Choose a connected AI provider and model first.');
       return;
     }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setLoading(true);
     setError('');
     setNotice('');
@@ -367,6 +384,7 @@ export default function DescriptionWorkspace() {
       const response = await fetch('/api/automation/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           stage: 'description',
           provider: connection.providerId,
@@ -387,9 +405,11 @@ export default function DescriptionWorkspace() {
           },
         }),
       });
-      const result = await response.json() as { output?: string; error?: string };
+      const result = await response.json().catch(() => null) as { output?: string; error?: string; truncated?: boolean } | null;
+      if (!result) throw new Error('The server response could not be read. Check the connection and try again.');
       if (!response.ok || !result.output) throw new Error(result.error || 'The model did not return usable Titles & Description.');
-      const nextPlan = parseDescriptionPlan(result.output, selectedThumbnail.headline);
+      if (result.truncated) throw new Error("The model's response was cut off by its output limit. Nothing was replaced; try again or choose another model.");
+      const { plan: nextPlan, droppedTitles } = parseDescriptionPlan(result.output, selectedThumbnail.headline);
       const record: StageRecord = {
         content: JSON.stringify(nextPlan, null, 2),
         providerName: connection.providerName,
@@ -401,21 +421,26 @@ export default function DescriptionWorkspace() {
         sourceScriptUpdatedAt: scriptRecord.updatedAt,
         sourceThumbnailUpdatedAt: thumbnailRecord.updatedAt,
       };
-      const next: WorkflowState = { ...workflow, stages: { ...workflow.stages, description: record, shorts: undefined } };
+      const fresh = readJson<WorkflowState>(workflowStorageKey, initialWorkflow);
+      const next: WorkflowState = { ...fresh, stages: { ...fresh.stages, description: record, shorts: undefined } };
       if (persistWorkflow(next)) {
-        setNotice('Everything is ready. The recommended title is already selected; change it only if you want.');
+        setNotice('Everything is ready' + (droppedTitles ? ` (${droppedTitles} incomplete title choice${droppedTitles === 1 ? ' was' : 's were'} dropped automatically)` : '') + '. The recommended title is already selected; change it only if you want.');
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Titles & Description could not be created. Your saved result is unchanged.');
+      if (requestError instanceof Error && requestError.name === 'AbortError') { setNotice('Request cancelled. Nothing was replaced.'); setError(''); }
+      else setError(requestError instanceof Error ? requestError.message : 'Titles & Description could not be created. Your saved result is unchanged.');
     } finally {
+      abortControllerRef.current = null;
       setLoading(false);
     }
   }
 
   function selectTitle(id: string) {
     if (!descriptionRecord || !planCurrent || !plan) return;
+    if (workflow.stages.shorts?.content && !window.confirm('Changing the Final title clears the saved Shorts so they cannot repeat the old angle. Continue?')) return;
     const nextRecord = { ...descriptionRecord, selectedTitleId: id, updatedAt: new Date().toISOString() };
-    const next: WorkflowState = { ...workflow, stages: { ...workflow.stages, description: nextRecord, shorts: undefined } };
+    const fresh = readJson<WorkflowState>(workflowStorageKey, initialWorkflow);
+    const next: WorkflowState = { ...fresh, stages: { ...fresh.stages, description: nextRecord, shorts: undefined } };
     if (persistWorkflow(next)) {
       setError('');
       setNotice(`${plan.titles.find((item) => item.id === id)?.title ?? 'Title'} selected as Final.`);
@@ -494,7 +519,7 @@ export default function DescriptionWorkspace() {
           <div className="description-request-note"><span>AUTOMATIC</span><p>Your Final Script and selected Thumbnail are added automatically. Research evidence stays private; no source link is published.</p></div>
           {error && <div className="description-message error"><span>!</span><p>{error}</p></div>}
           {notice && <div className="description-message success"><span>✓</span><p>{notice}</p></div>}
-          <div className="description-build-row"><div><strong>{handoffReady ? plan ? 'Create a fresh version only when needed' : 'Everything is ready' : 'Final Thumbnail required'}</strong><span>Your saved result changes only after a complete new result passes every check.</span></div><button type="button" disabled={loading || !handoffReady || !activeModel} onClick={buildUploadPackage}>{loading ? <><i className="description-spinner" /> Creating carefully…</> : <>{plan ? 'Create Fresh Version' : 'Create Titles & Description'} <span>→</span></>}</button></div>
+          <div className="description-build-row"><div><strong>{handoffReady ? plan ? 'Create a fresh version only when needed' : 'Everything is ready' : 'Final Thumbnail required'}</strong><span>Your saved result changes only after a complete new result passes every check.</span></div><div className="description-footer-actions">{loading ? <button type="button" className="script-cancel" onClick={() => abortControllerRef.current?.abort()}>Cancel · {elapsedSeconds}s</button> : null}<button type="button" disabled={loading || !handoffReady || !activeModel} onClick={buildUploadPackage}>{loading ? <><i className="description-spinner" /> Creating carefully… {elapsedSeconds}s</> : <>{plan ? 'Create Fresh Version' : 'Create Titles & Description'} <span>→</span></>}</button></div></div>
         </section>
 
         {plan ? <>

@@ -98,6 +98,11 @@ function readModelList(payload: unknown, provider: ProviderId): ModelResult[] {
       return { id, name: typeof displayName === 'string' ? displayName : id, description };
     })
     .filter((model): model is ModelResult => Boolean(model))
+    // Non-Gemini providers expose many non-generation models (embeddings,
+    // TTS, transcription, image, moderation) that would fail at generation
+    // time; hide the clearly non-text-generation ones.
+    .filter((model) => provider === 'gemini'
+      || !/(embedding|whisper|moderation|dall-e|tts-1|transcribe|omni-moderation)/i.test(model.id))
     .filter((model, index, all) => all.findIndex((item) => item.id === model.id) === index)
     .sort((a, b) => a.name.localeCompare(b.name));
 }

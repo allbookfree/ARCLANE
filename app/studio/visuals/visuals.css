@@ -321,4 +321,10 @@
 @media (max-width: 430px) {
   .visual-duration-options { grid-template-columns: 1fr; }
   .visual-duration-options > label, .visual-duration-auto { grid-column: auto; }
+}.visual-footer-actions { display: flex; align-items: center; gap: 10px; }
+.visual-cancel {
+  min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 16px; border: 1px solid #cfe0d4; border-radius: 11px; background: #fff;
+  color: #6a8a74; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; box-shadow: none;
 }
+.visual-cancel:hover:not(:disabled) { background: #f3f7f4; color: #23684a; }

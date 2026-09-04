@@ -55,22 +55,46 @@ export default function BackupRestore() {
     try {
       if (file.size > MAX_BACKUP_BYTES) throw new Error('This backup file is too large.');
       const parsed = JSON.parse(await file.text()) as Partial<BackupFile>;
-      if (parsed.schema !== BACKUP_SCHEMA || parsed.version !== BACKUP_VERSION
-        || !parsed.entries || typeof parsed.entries !== 'object' || Array.isArray(parsed.entries)) {
-        throw new Error('This file is not an Arclane workspace backup.');
+      const isWorkspaceBackup = parsed.schema === BACKUP_SCHEMA && parsed.version === BACKUP_VERSION
+        && parsed.entries && typeof parsed.entries === 'object' && !Array.isArray(parsed.entries);
+      const isLegacyProjectBackup = !parsed.entries && typeof (parsed as { workflow?: unknown }).workflow === 'object';
+      if (!isWorkspaceBackup && !isLegacyProjectBackup) {
+        throw new Error('This file is not an Arclane workspace backup (neither a full workspace backup nor a project backup from the New Video dialog).');
       }
-      const entries = Object.entries(parsed.entries).filter((entry): entry is [string, string] =>
+      // The older "project backup" produced by the New Video dialog carries a
+      // single workflow payload; ingest it into the standard entries shape.
+      const legacyWorkflow = parsed.schema === undefined
+        && (parsed as Partial<{ schema: unknown; workflow?: unknown }>);
+      let source: Record<string, string> | undefined = parsed.entries;
+      if (!source && legacyWorkflow && typeof legacyWorkflow === 'object' && 'workflow' in legacyWorkflow) {
+        source = { 'arclane.creator-workflow.v1': JSON.stringify((legacyWorkflow as { workflow?: unknown }).workflow ?? {}) };
+      }
+      if (!source) throw new Error('This file is not an Arclane workspace backup.');
+      const entries = Object.entries(source).filter((entry): entry is [string, string] =>
         entry[0].startsWith(KEY_PREFIX) && typeof entry[1] === 'string');
       if (!entries.length) throw new Error('The backup file contains no Arclane workspace data.');
+      // Transactional restore: snapshot the current values first so a storage
+      // failure mid-way can roll everything back instead of half-applying.
+      const previous = new Map<string, string | null>();
+      let written = 0;
       try {
-        entries.forEach(([key, value]) => window.localStorage.setItem(key, value));
+        for (const [key, value] of entries) {
+          previous.set(key, window.localStorage.getItem(key));
+          window.localStorage.setItem(key, value);
+          written += 1;
+        }
       } catch {
-        throw new Error('This browser could not restore the backup (storage is full or blocked).');
+        for (const [key, value] of previous) {
+          try { if (value === null) window.localStorage.removeItem(key); else window.localStorage.setItem(key, value); } catch { /* best-effort rollback */ }
+        }
+        throw new Error(`This browser could not restore the backup (storage is full or blocked) after ${written} of ${entries.length} files; the previous data was rolled back.`);
       }
       window.dispatchEvent(new Event('arclane:model-connections-changed'));
       window.dispatchEvent(new Event('arclane:research-tools-changed'));
+      window.dispatchEvent(new Event('arclane:workflow-changed'));
       setError('');
-      const restoredAt = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString() : '';
+      const exportedTime = parsed.exportedAt ? new Date(parsed.exportedAt) : null;
+      const restoredAt = exportedTime && !Number.isNaN(exportedTime.getTime()) ? exportedTime.toLocaleString() : '';
       setStatus(`Restored ${entries.length} workspace file${entries.length === 1 ? '' : 's'}${restoredAt ? ` from ${restoredAt}` : ''}. Reloading…`);
       window.setTimeout(() => window.location.reload(), 900);
     } catch (restoreError) {

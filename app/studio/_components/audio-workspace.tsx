@@ -1,7 +1,7 @@
 'use client';
 
 import { jsonrepair } from 'jsonrepair';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StudioStageId } from '../_lib/stages';
 import { studioNavigate } from '../_lib/navigation';
 import ScriptDocumentView, { getSpokenScriptText } from './script-document-view';
@@ -80,6 +80,16 @@ const audioPlanVersion = 'ARCLANE_AUDIO_PLAN_2026_08_V3' as const;
 const allowedSources = new Set<AudioSource>(['youtube_audio_library', 'pixabay', 'none']);
 const allowedBedTypes = new Set<BedType>(['music', 'ambience', 'silence']);
 const faithForbidden = /\b(music|musical|melody|melodic|instrument|instrumental|orchestra|orchestral|piano|violin|guitar|drum|percussion|beat|song|singing|vocal|vocals|chant|chanting|humming|choir|nasheed|synth|synthesizer|pad)\b/i;
+
+// The prompt itself uses negations such as "non-musical ambience" and "no
+// music"; those must never trip the faith-safe check on a valid plan.
+function hasForbiddenSoundText(value: string) {
+  const withoutNegations = value
+    .replace(/\bnon-?\s?(?:musical|music|melodic|instrumental|percussive)\b/gi, ' ')
+    .replace(/\b(?:no|without|zero)\s+(?:music|melody|melodies|instruments|instrumental|percussion|beats|drums|singing|chanting|humming|choir|vocals|musical pads|musical bed)\b/gi, ' ')
+    .replace(/\b(?:music|melody|instrument)[-\s]?free\b/gi, ' ');
+  return faithForbidden.test(withoutNegations);
+}
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -234,7 +244,7 @@ function parseAudioPlan(content: string, mode: AudioMode, totalDuration: number,
       capCut: normalizeCapCut(raw.capCut, raw.mixSettings, soundType),
     };
 
-    if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) || startSeconds < 0 || endSeconds <= startSeconds || endSeconds > totalDuration + 1) {
+    if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) || startSeconds < 0 || endSeconds <= startSeconds || endSeconds > totalDuration + 0.2) {
       throw new Error(zone.zoneId + ' has an invalid time range. Nothing was replaced; click Build Audio Plan once more.');
     }
     if (startSeconds < previousEnd - 0.1) throw new Error('The Audio sections overlap or are out of order. Nothing was replaced; click Build Audio Plan once more.');
@@ -274,7 +284,7 @@ function parseAudioPlan(content: string, mode: AudioMode, totalDuration: number,
   }
 
   if (mode === 'faith_safe') {
-    const unsafeZone = essentialZones.find((zone) => zone.soundType === 'music' || faithForbidden.test(zone.searchQuery));
+    const unsafeZone = essentialZones.find((zone) => zone.soundType === 'music' || hasForbiddenSoundText(zone.searchQuery));
     if (unsafeZone) throw new Error('The model included a musical element while Faith-safe audio was on. Nothing was replaced; try again or choose another model.');
   }
 
@@ -311,6 +321,15 @@ export default function AudioWorkspace() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [modal, setModal] = useState<'script' | 'timeline' | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!loading) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => { setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)); }, 1000);
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   const scriptRecord = workflow.stages.scripts;
   const voiceRecord = workflow.stages.voiceover;
@@ -362,6 +381,7 @@ export default function AudioWorkspace() {
     try {
       window.localStorage.setItem(workflowStorageKey, JSON.stringify(next));
       setWorkflow(next);
+      window.dispatchEvent(new Event('arclane:workflow-changed'));
       return true;
     } catch {
       setError('This browser could not save the Audio Plan locally. Free some browser storage and try again.');
@@ -372,7 +392,7 @@ export default function AudioWorkspace() {
   const savePreference = useCallback((nextProviderId: ProviderId, nextModelId: string) => {
     const preferences = readJson<Partial<Record<StudioStageId, ModelPreference>>>(modelPreferenceKey, {});
     preferences.audio = { providerId: nextProviderId, modelId: nextModelId };
-    window.localStorage.setItem(modelPreferenceKey, JSON.stringify(preferences));
+    try { window.localStorage.setItem(modelPreferenceKey, JSON.stringify(preferences)); } catch { /* preference saving is best-effort */ }
   }, []);
 
   useEffect(() => {
@@ -431,7 +451,7 @@ export default function AudioWorkspace() {
   }
   function changeAudioMode(nextMode: AudioMode) {
     setAudioMode(nextMode);
-    window.localStorage.setItem(audioModePreferenceKey, JSON.stringify({ mode: nextMode }));
+    try { window.localStorage.setItem(audioModePreferenceKey, JSON.stringify({ mode: nextMode })); } catch { /* preference saving is best-effort */ }
     setError('');
     setNotice(nextMode === 'faith_safe'
       ? 'Faith-safe audio is on. Build a new plan to use only silence, ambience, foley and necessary sound effects.'
@@ -439,7 +459,7 @@ export default function AudioWorkspace() {
   }
 
   async function buildAudioPlan() {
-    if (loading) return;
+    if (loading || abortControllerRef.current) return;
     if (!handoffReady || !scriptRecord || !voiceRecord || !visualsRecord || !visualPlan || !compactTimeline.length) {
       setError('Finish the current Final Script, Voiceover and complete Visual Plan before building Audio.');
       return;
@@ -451,36 +471,57 @@ export default function AudioWorkspace() {
       return;
     }
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setLoading(true);
     setError('');
     setNotice('');
     try {
-      const response = await fetch('/api/automation/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          stage: 'audio',
-          provider: connection.providerId,
-          providerName: connection.providerName,
-          model: model.id,
-          apiKey: connection.apiKey,
-          baseUrl: connection.baseUrl,
-          authMethod: connection.authMethod,
-          headerName: connection.headerName,
-          completionPath: connection.completionPath,
-          extraInstructions: direction,
-          context: {
-            selectedIdea: selectedIdea ? { title: selectedIdea.title } : null,
-            audioTimeline: compactTimeline,
-            audioDurationSeconds: totalDuration,
-            audioMode: { mode: audioMode },
-          },
-        }),
-      });
-      const result = await response.json() as { output?: string; error?: string };
-      if (!response.ok || !result.output) throw new Error(result.error || 'The model did not return a usable Audio Plan.');
+      // One automatic repair pass: a response that fails the timeline checks is
+      // retried once with the exact failure so the model can fix only that.
+      let plan: AudioPlan | null = null;
+      let lastFailure = '';
+      for (let attempt = 1; attempt <= 2 && !plan; attempt += 1) {
+        const repairNote = attempt > 1 && lastFailure
+          ? `AUTOMATIC REPAIR: Your previous Audio Plan failed validation with this exact problem: "${lastFailure}". Return one complete corrected JSON object that covers the whole timeline from 0 to ${totalDuration} seconds without gaps or overlaps.`
+          : '';
+        const response = await fetch('/api/automation/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            stage: 'audio',
+            provider: connection.providerId,
+            providerName: connection.providerName,
+            model: model.id,
+            apiKey: connection.apiKey,
+            baseUrl: connection.baseUrl,
+            authMethod: connection.authMethod,
+            headerName: connection.headerName,
+            completionPath: connection.completionPath,
+            extraInstructions: [direction, repairNote].filter(Boolean).join('\n\n'),
+            context: {
+              selectedIdea: selectedIdea ? { title: selectedIdea.title } : null,
+              audioTimeline: compactTimeline,
+              audioDurationSeconds: totalDuration,
+              audioMode: { mode: audioMode },
+            },
+          }),
+        });
+        const result = await response.json().catch(() => null) as { output?: string; error?: string; truncated?: boolean } | null;
+        if (!result) throw new Error('The server response could not be read while building the Audio Plan. Check the connection and try again.');
+        if (!response.ok || !result.output) throw new Error(result.error || 'The model did not return a usable Audio Plan.');
+        if (result.truncated) throw new Error('The model\'s response was cut off by its output limit before finishing the Audio Plan. Nothing was replaced; try again or choose a model with a larger output limit.');
+        try {
+          plan = parseAudioPlan(result.output, audioMode, totalDuration);
+        } catch (parseError) {
+          lastFailure = parseError instanceof Error ? parseError.message : 'invalid plan';
+          if (attempt === 2) throw parseError;
+          setNotice('The first response failed the timeline checks. One automatic repair pass is running with the exact failure attached…');
+        }
+      }
+      if (!plan) throw new Error('The Audio Plan could not be completed. Your saved work is unchanged.');
 
-      const plan = parseAudioPlan(result.output, audioMode, totalDuration);
       const record: StageRecord = {
         content: JSON.stringify(plan, null, 2),
         providerName: connection.providerName,
@@ -491,16 +532,19 @@ export default function AudioWorkspace() {
         sourceVisualsUpdatedAt: visualsRecord.updatedAt,
         audioMode,
       };
+      const fresh = readJson<WorkflowState>(workflowStorageKey, initialWorkflow);
       const next: WorkflowState = {
-        ...workflow,
-        stages: { ...workflow.stages, audio: record, thumbnails: undefined, description: undefined, shorts: undefined },
+        ...fresh,
+        stages: { ...fresh.stages, audio: record, thumbnails: undefined, description: undefined, shorts: undefined },
       };
       if (persistWorkflow(next)) {
         setNotice('Complete Audio Plan saved. All ' + plan.zones.length + ' required section' + (plan.zones.length === 1 ? ' is' : 's are') + ' visible from 0:00 to ' + formatTime(totalDuration) + '.');
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Audio planning failed. Your saved work is unchanged.');
+      if (requestError instanceof Error && requestError.name === 'AbortError') { setNotice('Audio request cancelled. Nothing was changed.'); setError(''); }
+      else setError(requestError instanceof Error ? requestError.message : 'Audio planning failed. Your saved work is unchanged.');
     } finally {
+      abortControllerRef.current = null;
       setLoading(false);
     }
   }
@@ -616,7 +660,10 @@ export default function AudioWorkspace() {
 
             <div className="audio-build-row">
               <div><strong>Two-step handoff</strong><span>Visuals only delivered the approved source. Nothing runs until you click this button.</span></div>
-              <button type="button" disabled={!handoffReady || !activeModel || loading} onClick={() => void buildAudioPlan()}>{loading ? <><i className="automation-spinner" /> Building Audio Plan…</> : <>{planCurrent ? 'Build again safely' : 'Build Audio Plan'} <b>→</b></>}</button>
+              <div className="audio-footer-actions">
+                {loading ? <button type="button" className="audio-cancel" onClick={() => abortControllerRef.current?.abort()}>Cancel · {elapsedSeconds}s</button> : null}
+                <button type="button" disabled={!handoffReady || !activeModel || loading} onClick={() => void buildAudioPlan()}>{loading ? <><i className="automation-spinner" /> Building Audio Plan… {elapsedSeconds}s</> : <>{planCurrent ? 'Build again safely' : 'Build Audio Plan'} <b>→</b></>}</button>
+              </div>
             </div>
           </section>
 

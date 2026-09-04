@@ -95,7 +95,9 @@ function providerMark(providerId: ProviderId) {
 
 
 function researchStatus(content: string) {
-  return content.match(/Handoff status:\*{0,2}\s*(READY WITH CONDITIONS|READY|NOT READY)\b/i)?.[1]?.toUpperCase() ?? '';
+  // Tolerant of bold markers and spacing: "**Handoff status** : READY" is
+  // the same decision as "Handoff status: READY".
+  return content.match(/\**\s*Handoff status\s*\**\s*:\s*\**\s*(READY WITH CONDITIONS|READY|NOT READY)\b/i)?.[1]?.toUpperCase() ?? '';
 }
 
 function getScriptIssues(record: StageRecord | undefined, content: string, researchReady: boolean) {
@@ -122,7 +124,16 @@ export default function ScriptWorkspace() {
   const [requestKind, setRequestKind] = useState<'write' | 'review' | 'translate' | ''>('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const requestInFlight = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!loading) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => { setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)); }, 1000);
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   const selectedIdea = workflow.selectedIdea;
   const researchRecord = workflow.stages.research;
@@ -154,10 +165,22 @@ export default function ScriptWorkspace() {
   const originalDraft = review?.originalContent || activeRecord?.content || '';
   const hasDistinctOriginal = Boolean(originalDraft.trim() && normalizeScriptMarkdown(originalDraft) !== normalizeScriptMarkdown(draft));
 
+  // Warn before leaving with unsaved Script edits (refresh or close).
+  useEffect(() => {
+    if (!dirty) return;
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, [dirty]);
+
   const persistWorkflow = useCallback((next: WorkflowState) => {
     try {
       window.localStorage.setItem(workflowStorageKey, JSON.stringify(next));
       setWorkflow(next);
+      window.dispatchEvent(new Event('arclane:workflow-changed'));
       return true;
     } catch {
       setError('This browser could not save more workflow data. Download or copy the Script before continuing.');
@@ -168,7 +191,7 @@ export default function ScriptWorkspace() {
   const savePreference = useCallback((nextProviderId: ProviderId, nextModelId: string) => {
     const preferences = readJson<Partial<Record<StudioStageId, ModelPreference>>>(modelPreferenceKey, {});
     preferences.scripts = { providerId: nextProviderId, modelId: nextModelId };
-    window.localStorage.setItem(modelPreferenceKey, JSON.stringify(preferences));
+    try { window.localStorage.setItem(modelPreferenceKey, JSON.stringify(preferences)); } catch { /* preference saving is best-effort */ }
   }, []);
 
   useEffect(() => {
@@ -256,6 +279,7 @@ export default function ScriptWorkspace() {
     if (hasDownstreamWork() && !window.confirm('Replacing this Script will clear Voiceover and every later production output so old wording is not reused. Continue?')) return;
 
     requestInFlight.current = true;
+    abortControllerRef.current = new AbortController();
     setLoading(true);
     setRequestKind('write');
     setError('');
@@ -265,6 +289,7 @@ export default function ScriptWorkspace() {
       const response = await fetch('/api/automation/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortControllerRef.current.signal,
         body: JSON.stringify({
           stage: 'scripts',
           provider: connection.providerId,
@@ -283,8 +308,10 @@ export default function ScriptWorkspace() {
           },
         }),
       });
-      const result = await response.json() as { output?: string; attempts?: number; error?: string };
+      const result = await response.json().catch(() => null) as { output?: string; attempts?: number; error?: string; truncated?: boolean } | null;
+      if (!result) throw new Error('The server response could not be read while writing the Script. Check the connection and try again.');
       if (!response.ok || !result.output?.trim()) throw new Error(result.error || 'The model did not return a usable Script.');
+      if (result.truncated) throw new Error('The model\'s response was cut off by its output limit before the Script finished. Nothing was replaced; try again or choose a model with a larger output limit.');
 
       const normalized = normalizeScriptMarkdown(result.output);
       const record: StageRecord = {
@@ -300,9 +327,10 @@ export default function ScriptWorkspace() {
           status: 'pending',
         },
       };
+      const fresh = readJson<WorkflowState>(workflowStorageKey, initialWorkflow);
       const nextWorkflow: WorkflowState = {
-        ...workflow,
-        stages: { ...clearDownstream(workflow.stages), scripts: record },
+        ...fresh,
+        stages: { ...clearDownstream(fresh.stages), scripts: record },
       };
       if (persistWorkflow(nextWorkflow)) {
         setDraft(normalized);
@@ -312,15 +340,19 @@ export default function ScriptWorkspace() {
         setNotice(`Draft saved · ${generatedWords.toLocaleString()} spoken words · about ${getScriptSignals(normalized).estimatedMinutes} minutes · ${calls} provider call${calls === 1 ? '' : 's'}. Length is automatic; Recheck remains manual.`);
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Script generation failed. Please try again.');
-      setNotice('');
+      if (requestError instanceof Error && requestError.name === 'AbortError') { setNotice('Script request cancelled. Nothing was replaced.'); setError(''); }
+      else {
+        setError(requestError instanceof Error ? requestError.message : 'Script generation failed. Please try again.');
+        setNotice('');
+      }
     } finally {
       window.localStorage.removeItem(scriptOperationKey);
+      abortControllerRef.current = null;
       requestInFlight.current = false;
       setLoading(false);
       setRequestKind('');
     }
-  }, [activeRecord, connections, direction, hasDownstreamWork, modelId, persistWorkflow, providerId, researchReady, researchRecord, researchSources, selectedIdea, workflow]);
+  }, [activeRecord, connections, direction, hasDownstreamWork, modelId, persistWorkflow, providerId, researchReady, researchRecord, researchSources, selectedIdea]);
 
   const reviewScript = useCallback(async () => {
     if (requestInFlight.current) {
@@ -348,6 +380,7 @@ export default function ScriptWorkspace() {
     if (hasDownstreamWork() && !window.confirm('A new final review will clear Voiceover and later outputs so they cannot use an older Script. Continue?')) return;
 
     requestInFlight.current = true;
+    abortControllerRef.current = new AbortController();
     setLoading(true);
     setRequestKind('review');
     setError('');
@@ -359,6 +392,7 @@ export default function ScriptWorkspace() {
       const response = await fetch('/api/automation/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortControllerRef.current.signal,
         body: JSON.stringify({
           stage: 'script_review',
           provider: connection.providerId,
@@ -376,8 +410,10 @@ export default function ScriptWorkspace() {
           },
         }),
       });
-      const result = await response.json() as { output?: string; attempts?: number; error?: string };
+      const result = await response.json().catch(() => null) as { output?: string; attempts?: number; error?: string; truncated?: boolean } | null;
+      if (!result) throw new Error('The server response could not be read during the Recheck. Check the connection and try again.');
       if (!response.ok || !result.output?.trim()) throw new Error(result.error || 'The reviewer did not return a usable final Script.');
+      if (result.truncated) throw new Error('The reviewer\'s response was cut off by its output limit before finishing. Nothing was replaced; the Final Script was not approved. Try again or choose a model with a larger output limit.');
 
       const normalized = normalizeScriptMarkdown(result.output);
       const reviewedRecord: StageRecord = {
@@ -397,9 +433,10 @@ export default function ScriptWorkspace() {
       const reviewedSignals = getScriptSignals(normalized);
       const qualityIssues = getScriptIssues(reviewedRecord, normalized, researchReady);
       reviewedRecord.scriptReview = { ...reviewedRecord.scriptReview!, status: !qualityIssues.length ? 'approved' : 'pending' };
+      const fresh = readJson<WorkflowState>(workflowStorageKey, initialWorkflow);
       const nextWorkflow: WorkflowState = {
-        ...workflow,
-        stages: { ...clearDownstream(workflow.stages), scripts: reviewedRecord },
+        ...fresh,
+        stages: { ...clearDownstream(fresh.stages), scripts: reviewedRecord },
       };
       if (persistWorkflow(nextWorkflow)) {
         setDraft(normalized);
@@ -412,15 +449,19 @@ export default function ScriptWorkspace() {
         }
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Script review failed. Please try again.');
-      setNotice('The current Script and Original Draft were not replaced.');
+      if (requestError instanceof Error && requestError.name === 'AbortError') { setNotice('Recheck cancelled. The current Script and Original Draft were not replaced.'); setError(''); }
+      else {
+        setError(requestError instanceof Error ? requestError.message : 'Script review failed. Please try again.');
+        setNotice('The current Script and Original Draft were not replaced.');
+      }
     } finally {
       window.localStorage.removeItem(scriptOperationKey);
+      abortControllerRef.current = null;
       requestInFlight.current = false;
       setLoading(false);
       setRequestKind('');
     }
-  }, [activeRecord, connections, dirty, draft, hasDownstreamWork, modelId, persistWorkflow, providerId, researchReady, researchRecord, selectedIdea, workflow]);
+  }, [activeRecord, connections, dirty, draft, hasDownstreamWork, modelId, persistWorkflow, providerId, researchReady, researchRecord, selectedIdea]);
 
   function changeProvider(nextProviderId: ProviderId) {
     const connection = connections.find((item) => item.providerId === nextProviderId);
@@ -437,6 +478,10 @@ export default function ScriptWorkspace() {
 
   function saveDraft(showNotice = true) {
     if (!activeRecord) return false;
+    if (requestInFlight.current) {
+      setError('A Script request is running. Wait for it to finish (or cancel it) before saving edits.');
+      return false;
+    }
     if (!dirty) {
       if (showNotice) setNotice('The Script is already saved on this device.');
       return true;
@@ -452,7 +497,8 @@ export default function ScriptWorkspace() {
         status: 'pending',
       },
     };
-    const next: WorkflowState = { ...workflow, stages: { ...clearDownstream(workflow.stages), scripts: record } };
+    const fresh = readJson<WorkflowState>(workflowStorageKey, initialWorkflow);
+    const next: WorkflowState = { ...fresh, stages: { ...clearDownstream(fresh.stages), scripts: record } };
     if (!persistWorkflow(next)) return false;
     setDraft(normalized);
     if (showNotice) setNotice('Script edits saved locally. Recheck & Polish is required again before Voiceover.');
@@ -501,6 +547,7 @@ export default function ScriptWorkspace() {
     }
 
     requestInFlight.current = true;
+    abortControllerRef.current = new AbortController();
     setLoading(true);
     setRequestKind('translate');
     setError('');
@@ -509,6 +556,7 @@ export default function ScriptWorkspace() {
       const response = await fetch('/api/automation/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortControllerRef.current.signal,
         body: JSON.stringify({
           stage: 'script_translate',
           provider: connection.providerId,
@@ -525,9 +573,13 @@ export default function ScriptWorkspace() {
           },
         }),
       });
-      const result = (await response.json()) as { output?: string; attempts?: number; error?: string };
+      const result = (await response.json().catch(() => null)) as { output?: string; attempts?: number; error?: string; truncated?: boolean } | null;
+      if (!result) throw new Error('সার্ভার রেসপন্স পড়া যায়নি। ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।');
       if (!response.ok || !result.output?.trim()) {
-        throw new Error(result.error || 'অনুবাদ সম্পন্ন করা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।');
+        throw new Error(result.error || 'অনুবাদ সম্পন্ন করা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।');
+      }
+      if (result.truncated) {
+        throw new Error('মডেলের আউটপুট সীমার কারণে অনুবাদ সম্পূর্ণ হয়নি (কেটে গেছে)। কিছু সংরক্ষিত হয়নি; আবার চেষ্টা করুন বা বড় আউটপুট-সীমার মডেল বাছুন।');
       }
 
       const translated = normalizeScriptMarkdown(result.output);
@@ -536,8 +588,10 @@ export default function ScriptWorkspace() {
       setViewMode('bengali');
       setNotice('✓ স্ক্রিপ্ট সফলভাবে বাংলায় অনুবাদ করা হয়েছে! আপনি নিচে উভয় ভাষায় পর্যালোচনা করতে পারেন।');
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'অনুবাদ ব্যর্থ হয়েছে। আবার চেষ্টা করুন।');
+      if (requestError instanceof Error && requestError.name === 'AbortError') { setNotice('অনুবাদ বাতিল করা হয়েছে। কিছু পরিবর্তন হয়নি।'); setError(''); }
+      else setError(requestError instanceof Error ? requestError.message : 'অনুবাদ ব্যর্থ হয়েছে। আবার চেষ্টা করুন।');
     } finally {
+      abortControllerRef.current = null;
       requestInFlight.current = false;
       setLoading(false);
       setRequestKind('');
@@ -579,7 +633,8 @@ export default function ScriptWorkspace() {
         status: 'pending',
       },
     };
-    const next: WorkflowState = { ...workflow, stages: { ...clearDownstream(workflow.stages), scripts: record } };
+    const fresh = readJson<WorkflowState>(workflowStorageKey, initialWorkflow);
+    const next: WorkflowState = { ...fresh, stages: { ...clearDownstream(fresh.stages), scripts: record } };
     if (persistWorkflow(next)) {
       setDraft(record.content);
       setViewMode('read');
@@ -664,6 +719,7 @@ export default function ScriptWorkspace() {
             {!researchReady ? <div className="script-prerequisite"><span>!</span><div><strong>Research is not ready for Script</strong><p>Use the automatic verification action in Research first. Script generation remains manual after the evidence handoff passes.</p></div><a href="/studio/research" onClick={(e) => studioNavigate('/studio/research', e)}>Return to Research</a></div> : null}
             {error ? <p className="script-message error" role="alert"><span>!</span>{error}</p> : null}
             {notice ? <p className="script-message success" role="status"><span>✓</span>{notice}</p> : null}
+            {loading ? <button type="button" className="script-cancel" onClick={() => abortControllerRef.current?.abort()}>Cancel request · {elapsedSeconds}s</button> : null}
 
             <footer><div><strong>Writing protection</strong><span>Manual start · one request at a time · Research-only facts · Original Draft preserved</span></div><button type="button" disabled={!researchReady || !activeModel || loading} onClick={() => void generateScript()}>{loading && requestKind === 'write' ? <><i className="automation-spinner" /> Writing carefully…</> : <>{activeRecord ? 'Write a new Draft' : 'Write full Script'} <b>→</b></>}</button></footer>
           </section>
@@ -741,7 +797,7 @@ export default function ScriptWorkspace() {
                     <button type="button" onClick={downloadBengaliScript}>Download বাংলা .md</button>
                   </>
                 ) : null}
-                <button type="button" disabled={!dirty} onClick={() => saveDraft()}>Save edits</button>
+                <button type="button" disabled={!dirty || loading} onClick={() => saveDraft()}>Save edits</button>
                 <button type="button" onClick={() => void copyScript()}>Copy English</button>
                 <button type="button" onClick={downloadScript}>Download .md</button>
                 <button

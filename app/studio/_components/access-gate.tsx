@@ -52,7 +52,17 @@ export default function AccessGate({ children }: { children: React.ReactNode }) 
     }
   }
 
-  if (phase === 'checking') return <div className="access-gate-shell" aria-busy="true" />;
+  if (phase === 'checking') {
+    return (
+      <div className="access-gate-shell" aria-busy="true">
+        <div className="access-gate-card" role="status">
+          <div className="access-gate-mark">A</div>
+          <p>ARCLANE &middot; Creator Studio</p>
+          <h1>Opening the studio&hellip;</h1>
+        </div>
+      </div>
+    );
+  }
   if (phase === 'open') return <>{children}</>;
 
   return (

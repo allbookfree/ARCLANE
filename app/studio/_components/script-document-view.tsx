@@ -35,8 +35,13 @@ function collectHeadings(lines: string[]) {
   return headings;
 }
 
+// Tolerant of heading level (##/###), bold markers and stray spacing around
+// the heading, so a valid dossier that formats the section slightly
+// differently does not turn into an endless verification-leak loop.
+const editorialHandoffSplit = /\n#{2,3}\s*\**\s*Editorial handoff\s*\**\s*\n/i;
+
 function narrativeOnly(content: string) {
-  return normalizeScriptMarkdown(content).split(/\n##\s+Editorial handoff\s*\n/i)[0].trim();
+  return normalizeScriptMarkdown(content).split(editorialHandoffSplit)[0].trim();
 }
 
 export function getSpokenScriptText(content: string) {
@@ -69,7 +74,7 @@ export function getScriptSignals(content: string) {
     wordCount: words.length,
     estimatedMinutes: words.length ? Math.max(1, Math.round((words.length / 145) * 10) / 10) : 0,
     status,
-    hasEditorialHandoff: /\n##\s+Editorial handoff\s*\n/i.test(`\n${normalized}\n`),
+    hasEditorialHandoff: editorialHandoffSplit.test(`\n${normalized}\n`),
     hasVerificationLeak: /\[VERIFY\]|NOT VERIFIED|OPEN GAP/i.test(narrative),
     hasRawFence: /```/.test(content),
     bannedOpening,
@@ -167,7 +172,7 @@ function ScriptDocument({ content, compact = false }: { content: string; compact
 
 export default function ScriptDocumentView({ content }: { content: string }) {
   const normalized = normalizeScriptMarkdown(content);
-  const split = normalized.split(/\n##\s+Editorial handoff\s*\n/i);
+  const split = normalized.split(editorialHandoffSplit);
   const narrative = split[0];
   const editorial = split.length > 1 ? `## Editorial handoff\n${split.slice(1).join('\n')}` : '';
   const headings = collectHeadings(narrative.split(/\r?\n/)).filter((heading) => heading.level === 2);

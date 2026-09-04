@@ -28,6 +28,7 @@ type Selection = {
   apiKey: string;
   baseUrl?: string;
   modelsPath?: string;
+  completionPath?: string;
   authMethod?: AuthMethod;
   headerName?: string;
 };
@@ -40,7 +41,7 @@ function readSavedSelections(saved: string | null) {
     if (!saved) return [];
     const value = JSON.parse(saved) as unknown;
     if (!Array.isArray(value)) return [];
-    return value.filter((item): item is Selection => {
+    const valid = value.filter((item): item is Selection => {
       if (!item || typeof item !== 'object') return false;
       const selection = item as Partial<Selection>;
       return typeof selection.providerId === 'string'
@@ -48,6 +49,11 @@ function readSavedSelections(saved: string | null) {
         && typeof selection.apiKey === 'string'
         && Array.isArray(selection.models);
     });
+    // Keep the last entry per provider so restore-merges or hand-edited data
+    // can never render duplicate connection cards.
+    const deduped = new Map<string, Selection>();
+    for (const selection of valid) deduped.set(selection.providerId, selection);
+    return [...deduped.values()];
   } catch {
     return [];
   }
@@ -117,6 +123,7 @@ export default function ApiProviderSettings() {
   const [customName, setCustomName] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [modelsPath, setModelsPath] = useState('/models');
+  const [completionPath, setCompletionPath] = useState('/chat/completions');
   const [authMethod, setAuthMethod] = useState<AuthMethod>('bearer');
   const [headerName, setHeaderName] = useState('Authorization');
   const [models, setModels] = useState<FetchedModel[]>([]);
@@ -130,7 +137,12 @@ export default function ApiProviderSettings() {
 
   function updateSelections(update: (current: Selection[]) => Selection[]) {
     const next = update(selections);
-    window.localStorage.setItem(storageKey, JSON.stringify(next));
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(next));
+    } catch {
+      setError('This browser could not save the connection (storage is full or blocked). Nothing was changed.');
+      return;
+    }
     window.dispatchEvent(new Event(storageChangeEvent));
   }
 
@@ -148,6 +160,7 @@ export default function ApiProviderSettings() {
     setCustomName(provider.id === 'custom' ? savedSelection?.providerName ?? '' : '');
     setBaseUrl(savedSelection?.baseUrl ?? '');
     setModelsPath(savedSelection?.modelsPath ?? '/models');
+    setCompletionPath(savedSelection?.completionPath ?? '/chat/completions');
     setAuthMethod(savedSelection?.authMethod ?? 'bearer');
     setHeaderName(savedSelection?.headerName ?? 'Authorization');
     setModels([]);
@@ -206,6 +219,10 @@ export default function ApiProviderSettings() {
     if (!activeProvider || selectedIds.length === 0) return;
     const selectedModels = models.filter((model) => selectedIds.includes(model.id));
     const providerName = activeProvider.id === 'custom' ? customName.trim() : activeProvider.name;
+    const existingCustom = activeProvider.id === 'custom'
+      ? selections.find((selection) => selection.providerId === 'custom' && selection.providerName !== providerName)
+      : undefined;
+    if (existingCustom && !window.confirm(`A custom connection named "${existingCustom.providerName}" already exists. Saving "${providerName}" replaces it, including its saved key. Continue?`)) return;
     updateSelections((current) => [
       ...current.filter((selection) => selection.providerId !== activeProvider.id),
       {
@@ -215,6 +232,7 @@ export default function ApiProviderSettings() {
         apiKey,
         baseUrl: activeProvider.id === 'custom' ? baseUrl : undefined,
         modelsPath: activeProvider.id === 'custom' ? modelsPath : undefined,
+        completionPath: activeProvider.id === 'custom' ? completionPath : undefined,
         authMethod: activeProvider.id === 'custom' ? authMethod : undefined,
         headerName: activeProvider.id === 'custom' ? headerName : undefined,
       },
@@ -321,6 +339,7 @@ export default function ApiProviderSettings() {
                     <label className="provider-field"><span>Provider name</span><input required value={customName} onChange={(event) => setCustomName(event.target.value)} placeholder="Example: Groq Cloud" /></label>
                     <label className="provider-field"><span>Base URL</span><input required type="url" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://api.provider.com/v1" /></label>
                     <label className="provider-field"><span>Models path</span><input required value={modelsPath} onChange={(event) => setModelsPath(event.target.value)} /></label>
+                    <label className="provider-field"><span>Completion path</span><input value={completionPath} onChange={(event) => setCompletionPath(event.target.value)} placeholder="/chat/completions" /></label>
                     <label className="provider-field"><span>Authentication</span><select value={authMethod} onChange={(event) => setAuthMethod(event.target.value as AuthMethod)}><option value="bearer">Bearer token</option><option value="api-key">API key header</option></select></label>
                     {authMethod === 'api-key' ? <label className="provider-field provider-field-wide"><span>Header name</span><input required value={headerName} onChange={(event) => setHeaderName(event.target.value)} placeholder="x-api-key" /></label> : null}
                   </div>

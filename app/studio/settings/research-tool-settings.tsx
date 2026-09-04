@@ -87,6 +87,18 @@ export default function ResearchToolSettings() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
+  function liveLastRun(): { lastRunCreditsUsed?: number; lastRunAt?: string } {
+    // Read the stored value fresh so a concurrent Research run that just wrote
+    // its credit usage is never reverted by this panel's older snapshot.
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      const parsedLive = raw ? JSON.parse(raw) as ResearchToolsConfig : {};
+      return { lastRunCreditsUsed: parsedLive.firecrawl?.lastRunCreditsUsed, lastRunAt: parsedLive.firecrawl?.lastRunAt };
+    } catch {
+      return {};
+    }
+  }
+
   function persist(next: ResearchToolsConfig) {
     window.localStorage.setItem(storageKey, JSON.stringify(next));
     window.dispatchEvent(new Event(storageChangeEvent));
@@ -119,6 +131,7 @@ export default function ResearchToolSettings() {
     setError('');
     try {
       const usage = await requestCreditUsage(key);
+      const lastRun = liveLastRun();
       persist({
         ...config,
         firecrawl: {
@@ -126,6 +139,8 @@ export default function ResearchToolSettings() {
           apiKey: key,
           savedAt: new Date().toISOString(),
           usage,
+          lastRunCreditsUsed: lastRun.lastRunCreditsUsed ?? config.firecrawl?.lastRunCreditsUsed,
+          lastRunAt: lastRun.lastRunAt ?? config.firecrawl?.lastRunAt,
         },
       });
       setNotice(`Firecrawl verified. ${usage.remainingCredits.toLocaleString()} of ${usage.planCredits.toLocaleString()} credits are currently available.`);
@@ -147,7 +162,8 @@ export default function ResearchToolSettings() {
     setNotice('');
     try {
       const usage = await requestCreditUsage(key);
-      persist({ ...config, firecrawl: { ...config.firecrawl!, usage } });
+      const lastRun = liveLastRun();
+      persist({ ...config, firecrawl: { ...config.firecrawl!, usage, lastRunCreditsUsed: lastRun.lastRunCreditsUsed ?? config.firecrawl?.lastRunCreditsUsed, lastRunAt: lastRun.lastRunAt ?? config.firecrawl?.lastRunAt } });
       setNotice(`Firecrawl balance refreshed: ${usage.remainingCredits.toLocaleString()} credits remaining.`);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Firecrawl credits could not be refreshed.');
@@ -213,7 +229,7 @@ export default function ResearchToolSettings() {
           {usage ? <>
             <div className="firecrawl-credit-metrics"><div><span>Remaining</span><strong>{usage.remainingCredits.toLocaleString()}</strong></div><div><span>Plan allowance</span><strong>{usage.planCredits.toLocaleString()}</strong></div><div><span>Billing period ends</span><strong>{readableDate(usage.billingPeriodEnd)}</strong></div></div>
             <div className="firecrawl-credit-track" aria-label={`${usagePercent.toFixed(0)} percent of credits remaining`}><i style={{ width: `${usagePercent}%` }} /></div>
-            <footer><span>Last checked {readableDate(usage.checkedAt)}</span><span>{typeof config.firecrawl?.lastRunCreditsUsed === 'number' ? `Last Research used ${config.firecrawl.lastRunCreditsUsed} credits` : 'Run cost will appear after External Evidence is used'}</span><strong>Provider-reported values · no hard-coded plan limit</strong></footer>
+            <footer><span>Last checked {readableDate(usage.checkedAt)}</span><span>{typeof config.firecrawl?.lastRunCreditsUsed === 'number' ? `Last Research used ${config.firecrawl.lastRunCreditsUsed} credits${config.firecrawl.lastRunAt ? ` (${readableDate(config.firecrawl.lastRunAt)})` : ''}` : 'Run cost will appear after External Evidence is used'}</span><strong>Provider-reported values · no hard-coded plan limit</strong></footer>
           </> : <p className="firecrawl-credit-empty">Use “Check credits” to authenticate the saved key and load the exact balance for its Firecrawl team.</p>}
         </section>
       ) : null}

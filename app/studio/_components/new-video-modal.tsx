@@ -11,7 +11,26 @@ const researchToolsStorageKey = 'arclane.research-tools.v1';
 const researchBalanceStorageKey = 'arclane.research-tools.balance.v1';
 const workflowChangeEvent = 'arclane:workflow-reset';
 const workflowStateChangeEvent = 'arclane:workflow-changed';
-const protectedKeys = new Set([connectionStorageKey, researchToolsStorageKey, researchBalanceStorageKey]);
+// Explicit keep-list instead of substring guessing: connections/keys and every
+// creator preference survive a New Video reset; anything else under the
+// arclane.* prefix (including future production keys) is cleared. When a new
+// preference key is added to the app, register it here.
+const keptKeys = new Set([
+  connectionStorageKey,
+  researchToolsStorageKey,
+  researchBalanceStorageKey,
+  'arclane.workflow-models.v1',
+  'arclane.ideas-web-search.v1',
+  'arclane.research-web-search.v1',
+  'arclane.research-external-evidence.v1',
+  'arclane.script-duration.v1',
+  'arclane.script-operation.v1',
+  'arclane.script-translation.v1',
+  'arclane.audio-mode.v1',
+  'arclane.visual-duration.v1',
+  'arclane.visual-modesty.v1',
+  'arclane.shorts-length.v1',
+]);
 
 function parseObject(value: string | null): JsonRecord {
   try {
@@ -55,6 +74,15 @@ function ideaFingerprint(value: unknown) {
   return title ? [title, normalize(idea.region), normalize(idea.period)].join('|') : '';
 }
 
+function normalizeArchivedIdea(value: unknown): JsonRecord | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const idea = value as JsonRecord;
+  const title = text(idea.title);
+  if (!title) return null;
+  const premise = text(idea.premise) || text(idea.concept) || '(No premise was recorded for this idea.)';
+  return { ...idea, title, premise };
+}
+
 function preserveMemory(workflow: JsonRecord) {
   const selectedIdea = workflow.selectedIdea;
   const selectedKey = ideaFingerprint(selectedIdea);
@@ -67,8 +95,9 @@ function preserveMemory(workflow: JsonRecord) {
     found = true;
     return { ...item, key: selectedKey, status: 'used' };
   });
-  if (selectedKey && !found) {
-    savedIdeas.unshift({ key: selectedKey, idea: selectedIdea, savedAt: new Date().toISOString(), status: 'used' });
+  const archived = normalizeArchivedIdea(selectedIdea);
+  if (archived && selectedKey && !found) {
+    savedIdeas.unshift({ key: selectedKey, idea: archived, savedAt: new Date().toISOString(), status: 'used' });
   }
   return savedIdeas;
 }
@@ -83,7 +112,7 @@ export function executeNewVideoReset(currentWorkflow?: JsonRecord) {
   const removableKeys: string[] = [];
   for (let index = 0; index < window.localStorage.length; index += 1) {
     const key = window.localStorage.key(index);
-    if (!key || !key.startsWith('arclane.') || key === workflowStorageKey || protectedKeys.has(key) || key.includes('memory') || key.includes('connections') || key.includes('settings')) continue;
+    if (!key || !key.startsWith('arclane.') || key === workflowStorageKey || keptKeys.has(key)) continue;
     removableKeys.push(key);
   }
   removableKeys.forEach((key) => window.localStorage.removeItem(key));

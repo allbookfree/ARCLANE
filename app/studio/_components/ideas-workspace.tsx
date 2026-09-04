@@ -247,6 +247,7 @@ export default function IdeasWorkspace() {
     try {
       window.localStorage.setItem(workflowStorageKey, JSON.stringify(next));
       setWorkflow(next);
+      window.dispatchEvent(new Event('arclane:workflow-changed'));
       return true;
     } catch {
       setError('This browser could not save more idea data. Export or remove older browser data before continuing.');

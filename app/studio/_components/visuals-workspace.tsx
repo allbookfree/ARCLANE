@@ -1,7 +1,7 @@
 'use client';
 
 import { jsonrepair } from 'jsonrepair';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StudioStageId } from '../_lib/stages';
 import { studioNavigate } from '../_lib/navigation';
 import ScriptDocumentView, { getScriptSignals, getSpokenScriptText } from './script-document-view';
@@ -339,22 +339,31 @@ function parseModelVisualPlan(content: string, manifest: ClipManifestItem[], dur
   const scenes: VisualScene[] = [];
   const sceneIds = new Set<string>();
 
+  // Item-level salvage: one malformed scene no longer discards a whole batch
+  // of otherwise valid scenes. Unusable scenes are skipped and reported; a
+  // missing search pair is defaulted because searches are helper queries.
   for (const value of rawScenes) {
     const raw = asRecord(value);
     const sceneId = stringValue(raw.sceneId);
     const rawAsset = stringValue(raw.asset) as VisualAsset;
-    const scene: VisualScene = {
+    const prompt = enforceStrictModesty(stringValue(raw.prompt), strictModesty);
+    const shot = stringValue(raw.shot);
+    if (!sceneId || sceneIds.has(sceneId) || !shot || !prompt) {
+      // Unusable scene: skipped on purpose; the recovery ladder rebuilds any
+      // timeline clips that referenced it because it is not in sceneIds.
+      continue;
+    }
+    const search = stringList(raw.search, 2);
+    while (search.length < 2) search.push('');
+    sceneIds.add(sceneId);
+    scenes.push({
       sceneId,
       asset: allowedAssets.has(rawAsset) ? rawAsset : 'ai_video',
-      shot: stringValue(raw.shot),
-      prompt: enforceStrictModesty(stringValue(raw.prompt), strictModesty),
-      search: stringList(raw.search, 2),
+      shot,
+      prompt,
+      search,
       note: stringValue(raw.note),
-    };
-    if (!sceneId || sceneIds.has(sceneId)) throw new Error('The model returned duplicate or unnamed Scene Library items. Nothing was replaced; try again or choose another model.');
-    if (!scene.shot || !scene.prompt || scene.search.length !== 2) throw new Error(`The model returned an incomplete production prompt for ${sceneId}. Nothing was replaced.`);
-    sceneIds.add(sceneId);
-    scenes.push(scene);
+    });
   }
   if (!scenes.length) throw new Error('The model did not return a usable Scene Library. Nothing was replaced.');
 
@@ -363,30 +372,31 @@ function parseModelVisualPlan(content: string, manifest: ClipManifestItem[], dur
   for (const value of rawTimeline) {
     const entry = asRecord(value);
     const clipId = stringValue(entry.clipId);
-    if (!clipId || byClipId.has(clipId)) throw new Error('The model duplicated or omitted Timeline clip IDs. Nothing was replaced; try again or choose another model.');
+    if (!clipId || byClipId.has(clipId)) continue;
     byClipId.set(clipId, entry);
   }
 
   const manifestIds = new Set(manifest.map((item) => item.clipId));
   const missing = manifest.filter((item) => !byClipId.has(item.clipId));
   const unexpected = [...byClipId.keys()].filter((clipId) => !manifestIds.has(clipId));
-  if (unexpected.length || rawTimeline.length !== byClipId.size || (!allowPartial && missing.length)) {
+  if ((!allowPartial && missing.length) || (allowPartial && !byClipId.size)) {
     throw new Error(`The model did not map the complete Voiceover (${missing.length} missing, ${unexpected.length} unexpected timeline clips). Nothing was replaced; try a model with a larger output limit.`);
-  }
-  if (allowPartial && !byClipId.size) {
-    throw new Error('The model returned no usable Timeline clips. No saved work changed; try another model.');
   }
   const mappedManifest = allowPartial ? manifest.filter((item) => byClipId.has(item.clipId)) : manifest;
 
   const seenScenes = new Set<string>();
   const usage = new Map<string, number>();
   let previousSceneId = '';
-  const timeline = mappedManifest.map((item) => {
+  const timeline = mappedManifest.map((item): VisualTimelineEntry | null => {
     const raw = byClipId.get(item.clipId)!;
     let sceneId = stringValue(raw.sceneId);
-    let direction = stringValue(raw.direction);
-    if (!sceneIds.has(sceneId)) throw new Error(`${item.clipId} points to an unknown Scene Library item (${sceneId || 'missing'}). Nothing was replaced.`);
-    if (!direction) throw new Error(`The model omitted the visual-use direction for ${item.clipId}. Nothing was replaced.`);
+    let direction = stringValue(raw.direction) || 'Use this scene as written for this narration beat.';
+    if (!sceneIds.has(sceneId)) {
+      // The clip references an unknown scene: treat it as missing so the
+      // recovery ladder can rebuild it instead of discarding the batch.
+      missing.push(item);
+      return null;
+    }
 
     const reuseCount = usage.get(sceneId) ?? 0;
     const needsDistinctVariant = previousSceneId === sceneId || reuseCount >= 3;
@@ -423,7 +433,7 @@ function parseModelVisualPlan(content: string, manifest: ClipManifestItem[], dur
     seenScenes.add(sceneId);
     previousSceneId = sceneId;
     return { ...item, sceneId, direction, firstUse } satisfies VisualTimelineEntry;
-  });
+  }).filter((entry): entry is VisualTimelineEntry => entry !== null);
 
   const strategy = normalizeStrategy(root.strategy);
   if (strictModesty) strategy.modestyRule = strictModestySafeguard;
@@ -471,7 +481,10 @@ function visualBuildSignature(
 
 function replaceKnownIds(value: string, replacements: Map<string, string>) {
   let next = value;
-  for (const [source, target] of replacements) next = next.split(source).join(target);
+  for (const [source, target] of replacements) {
+    // Word-boundary replacement so CHAR-1 cannot corrupt CHAR-10.
+    next = next.replace(new RegExp('' + source + '', 'g'), target);
+  }
   return next;
 }
 
@@ -620,19 +633,25 @@ function readSavedPlan(content: string): VisualPlan | null {
         note: stringValue(scene.note),
       } satisfies VisualScene;
     });
-    const timeline = root.timeline.map((value) => {
+    const timeline = root.timeline.map((value): VisualTimelineEntry | null => {
       const entry = asRecord(value);
+      const startSeconds = Number(entry.startSeconds);
+      const endSeconds = Number(entry.endSeconds);
+      const durationSeconds = Number(entry.durationSeconds);
+      // A corrupted saved plan must read as unreadable, not as NaN timers
+      // that silently fail every comparison and render an empty workspace.
+      if (![startSeconds, endSeconds, durationSeconds].every(Number.isFinite)) return null;
       return {
         clipId: stringValue(entry.clipId),
-        startSeconds: Number(entry.startSeconds),
-        endSeconds: Number(entry.endSeconds),
-        durationSeconds: Number(entry.durationSeconds),
+        startSeconds,
+        endSeconds,
+        durationSeconds,
         narration: stringValue(entry.narration),
         sceneId: stringValue(entry.sceneId),
         direction: stringValue(entry.direction),
         firstUse: entry.firstUse === true,
       } satisfies VisualTimelineEntry;
-    });
+    }).filter((entry): entry is VisualTimelineEntry => entry !== null);
     const sceneIds = new Set(scenes.map((scene) => scene.sceneId));
     if (!scenes.length || !timeline.length || scenes.some((scene) => !scene.sceneId || !scene.prompt || scene.search.length !== 2)) return null;
     if (timeline.some((entry) => !entry.clipId || !entry.narration || !entry.direction || !sceneIds.has(entry.sceneId))) return null;
@@ -679,6 +698,15 @@ export default function VisualsWorkspace() {
   const [buildStatus, setBuildStatus] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!loading) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => { setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)); }, 1000);
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   const scriptRecord = workflow.stages.scripts;
   const voiceRecord = workflow.stages.voiceover;
@@ -752,6 +780,7 @@ export default function VisualsWorkspace() {
     try {
       window.localStorage.setItem(workflowStorageKey, JSON.stringify(next));
       setWorkflow(next);
+      window.dispatchEvent(new Event('arclane:workflow-changed'));
       return true;
     } catch {
       setError('This browser could not save the Visual Plan locally. Free some browser storage and try again.');
@@ -762,7 +791,7 @@ export default function VisualsWorkspace() {
   const savePreference = useCallback((nextProviderId: ProviderId, nextModelId: string) => {
     const preferences = readJson<Partial<Record<StudioStageId, ModelPreference>>>(modelPreferenceKey, {});
     preferences.visuals = { providerId: nextProviderId, modelId: nextModelId };
-    window.localStorage.setItem(modelPreferenceKey, JSON.stringify(preferences));
+    try { window.localStorage.setItem(modelPreferenceKey, JSON.stringify(preferences)); } catch { /* preference saving is best-effort */ }
   }, []);
 
   useEffect(() => {
@@ -816,13 +845,13 @@ export default function VisualsWorkspace() {
     const normalizedSeconds = Math.max(3, Math.min(120, Math.round(nextSeconds)));
     setDurationMode(nextMode);
     setCustomDurationSeconds(normalizedSeconds);
-    window.localStorage.setItem(visualDurationPreferenceKey, JSON.stringify({ mode: nextMode, customSeconds: normalizedSeconds }));
+    try { window.localStorage.setItem(visualDurationPreferenceKey, JSON.stringify({ mode: nextMode, customSeconds: normalizedSeconds })); } catch { /* preference saving is best-effort */ }
     setError('');
     setNotice('');
   }
   function saveModestyMode(nextMode: VisualModestyMode) {
     setModestyMode(nextMode);
-    window.localStorage.setItem(visualModestyPreferenceKey, JSON.stringify({ mode: nextMode }));
+    try { window.localStorage.setItem(visualModestyPreferenceKey, JSON.stringify({ mode: nextMode })); } catch { /* preference saving is best-effort */ }
     setError('');
     setNotice(nextMode === 'strict'
       ? 'Strict modesty is on. Build a new Visual Plan to apply it to every scene.'
@@ -843,7 +872,7 @@ export default function VisualsWorkspace() {
   }
 
   async function buildVisualPlan() {
-    if (loading) return;
+    if (loading || abortControllerRef.current) return;
     if (!handoffReady || !scriptRecord || !voiceRecord || !manifest.length) {
       setError('Finish the current Final Script and Voiceover before building the Visual Plan.');
       return;
@@ -871,6 +900,8 @@ export default function VisualsWorkspace() {
     const totalBatchCount = manifestBatches.length;
     if (!savedProgress) window.localStorage.removeItem(visualProgressStorageKey);
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setLoading(true);
     setError('');
     setNotice('');
@@ -953,6 +984,7 @@ export default function VisualsWorkspace() {
           const response = await fetch('/api/automation/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: abortControllerRef.current?.signal,
             body: JSON.stringify({
               stage: 'visuals',
               provider: connection.providerId,
@@ -986,13 +1018,14 @@ export default function VisualsWorkspace() {
               },
             }),
           });
-          const result = await response.json() as {
+          const result = await response.json().catch(() => null) as {
             output?: string;
             error?: string;
             attempts?: number;
             retryAfterSeconds?: number;
             errorCode?: string;
-          };
+          } | null;
+          if (!result) throw new Error('The server response could not be read while building this Visual Plan part. Check the connection and try again.');
           if (!response.ok || !result.output) {
             throw new Error(result.error || 'The model did not return a usable Visual Plan.');
           }
@@ -1082,7 +1115,30 @@ export default function VisualsWorkspace() {
         }
       }
 
-      const plan = mergeVisualBatches(completedPlans, manifest, currentDuration);
+      let plan: VisualPlan;
+      try {
+        plan = mergeVisualBatches(completedPlans, manifest, currentDuration);
+      } catch (mergeError) {
+        // Escape hatch: when every part is saved but the assembly fails, drop
+        // the newest saved part so the next Resume rebuilds only that part
+        // with fresh output instead of re-failing the same merge forever.
+        if (completedPlans.length > 1 && completedBatchCount === totalBatchCount) {
+          const rebuiltPlans = completedPlans.slice(0, -1);
+          completedPlans = rebuiltPlans;
+          completedBatchCount = rebuiltPlans.length;
+          window.localStorage.setItem(visualProgressStorageKey, JSON.stringify({
+            version: 2,
+            signature,
+            totalBatches: totalBatchCount,
+            batches: rebuiltPlans,
+            updatedAt: new Date().toISOString(),
+          }));
+          throw new Error('All ' + totalBatchCount + ' protected parts were saved, but assembling them failed: '
+            + (mergeError instanceof Error ? mergeError.message : 'merge error')
+            + '. The newest part was removed from the saved build; click Resume Visual Plan to rebuild only that part.');
+        }
+        throw mergeError;
+      }
       const record: StageRecord = {
         content: JSON.stringify(plan, null, 2),
         providerName: connection.providerName,
@@ -1092,10 +1148,11 @@ export default function VisualsWorkspace() {
         sourceVoiceoverUpdatedAt: voiceRecord.updatedAt,
         visualModestyMode: modestyMode,
       };
+      const fresh = readJson<WorkflowState>(workflowStorageKey, initialWorkflow);
       const next: WorkflowState = {
-        ...workflow,
+        ...fresh,
         stages: {
-          ...workflow.stages,
+          ...fresh.stages,
           visuals: record,
           audio: undefined,
           thumbnails: undefined,
@@ -1114,6 +1171,10 @@ export default function VisualsWorkspace() {
         );
       }
     } catch (requestError) {
+      if (requestError instanceof Error && requestError.name === 'AbortError') {
+        setError('');
+        setNotice('Visual build cancelled. Every saved part remains safe; click Resume Visual Plan to continue later.');
+      } else {
       const rawMessage = requestError instanceof Error ? requestError.message : 'Visual planning failed.';
       const message = rawMessage
         .replace(/\s+Nothing was replaced[^.]*\./gi, '')
@@ -1135,7 +1196,9 @@ export default function VisualsWorkspace() {
             + (checkpointedPartialClipCount ? ' · ' + checkpointedPartialClipCount + ' current-part clips saved locally' : ' saved locally')
           : '',
       );
+      }
     } finally {
+      abortControllerRef.current = null;
       setLoading(false);
     }
   }
@@ -1233,7 +1296,7 @@ export default function VisualsWorkspace() {
             {buildStatus ? <p className="visual-message progress" role="status"><span>↻</span>{buildStatus}</p> : null}
             {notice ? <p className="visual-message success" role="status"><span>✓</span>{notice}</p> : null}
 
-            <footer><div><strong>Resumable protection</strong><span>Complete narration coverage · locally saved parts · {currentDuration.label} · {modestyMode === 'strict' ? 'strict covering on' : 'evidence-led modesty'} · continuity locked</span></div><button type="button" disabled={!handoffReady || !activeModel || loading} onClick={() => void buildVisualPlan()}>{loading ? <><i className="automation-spinner" /> Building protected parts…</> : <>{buildStatus ? 'Resume Visual Plan' : planCurrent ? 'Build again safely' : 'Build Visual Plan'} <b>→</b></>}</button></footer>
+            <footer><div><strong>Resumable protection</strong><span>Complete narration coverage · locally saved parts · {currentDuration.label} · {modestyMode === 'strict' ? 'strict covering on' : 'evidence-led modesty'} · continuity locked</span></div><div className="visual-footer-actions">{loading ? <button type="button" className="visual-cancel" onClick={() => abortControllerRef.current?.abort()}>Cancel · {elapsedSeconds}s</button> : null}<button type="button" disabled={!handoffReady || !activeModel || loading} onClick={() => void buildVisualPlan()}>{loading ? <><i className="automation-spinner" /> Building protected parts… {elapsedSeconds}s</> : <>{buildStatus ? 'Resume Visual Plan' : planCurrent ? 'Build again safely' : 'Build Visual Plan'} <b>→</b></>}</button></div></footer>
           </section>
 
           {visualPlan && planCurrent ? <>

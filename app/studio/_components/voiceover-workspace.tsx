@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StudioStageId } from '../_lib/stages';
 import { studioNavigate } from '../_lib/navigation';
 import ScriptDocumentView, { getScriptSignals, getSpokenScriptText } from './script-document-view';
@@ -129,7 +129,10 @@ function voiceSignals(content: string) {
 }
 
 function minimumAdvancedCues(sourceWordCount: number) {
-  return Math.max(2, Math.min(10, Math.floor(sourceWordCount / 250)));
+  // The prompt itself instructs restraint ("add bracket cues only when the
+  // delivery genuinely changes"), so the floor must stay low: roughly one cue
+  // per ten minutes of narration.
+  return Math.max(2, Math.min(10, Math.floor(sourceWordCount / 600)));
 }
 export default function VoiceoverWorkspace() {
   const [connections, setConnections] = useState<Selection[]>([]);
@@ -141,6 +144,15 @@ export default function VoiceoverWorkspace() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!loading) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => { setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)); }, 1000);
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   const scriptRecord = workflow.stages.scripts;
   const voiceRecord = workflow.stages.voiceover;
@@ -166,6 +178,7 @@ export default function VoiceoverWorkspace() {
     try {
       window.localStorage.setItem(workflowStorageKey, JSON.stringify(next));
       setWorkflow(next);
+      window.dispatchEvent(new Event('arclane:workflow-changed'));
       return true;
     } catch {
       setError('This browser could not save the Voiceover locally. Free some browser storage and try again.');
@@ -176,7 +189,7 @@ export default function VoiceoverWorkspace() {
   const savePreference = useCallback((nextProviderId: ProviderId, nextModelId: string) => {
     const preferences = readJson<Partial<Record<StudioStageId, ModelPreference>>>(modelPreferenceKey, {});
     preferences.voiceover = { providerId: nextProviderId, modelId: nextModelId };
-    window.localStorage.setItem(modelPreferenceKey, JSON.stringify(preferences));
+    try { window.localStorage.setItem(modelPreferenceKey, JSON.stringify(preferences)); } catch { /* preference saving is best-effort */ }
   }, []);
 
   useEffect(() => {
@@ -250,7 +263,7 @@ export default function VoiceoverWorkspace() {
   }
 
   async function prepareVoiceover() {
-    if (loading) return;
+    if (loading || abortControllerRef.current) return;
     if (!scriptRecord || !scriptFinal) {
       setError('Return to Script and complete Recheck & Polish before preparing Voiceover.');
       return;
@@ -262,6 +275,8 @@ export default function VoiceoverWorkspace() {
       return;
     }
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setLoading(true);
     setError('');
     setNotice('');
@@ -270,6 +285,7 @@ export default function VoiceoverWorkspace() {
       const response = await fetch('/api/automation/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           stage: 'voiceover',
           provider: connection.providerId,
@@ -288,8 +304,10 @@ export default function VoiceoverWorkspace() {
           },
         }),
       });
-      const result = await response.json() as { output?: string; error?: string };
+      const result = await response.json().catch(() => null) as { output?: string; error?: string; truncated?: boolean } | null;
+      if (!result) throw new Error('The server response could not be read while preparing the Voiceover. Check the connection and try again.');
       if (!response.ok || !result.output) throw new Error(result.error || 'The model did not return usable Voiceover text.');
+      if (result.truncated) throw new Error('The model\'s response was cut off by its output limit before the Voiceover finished. Nothing was replaced; try again or choose a model with a larger output limit.');
 
       const content = cleanVoiceoverOutput(result.output, profile);
       if (!content) throw new Error('The model returned no usable Voiceover. Try again or choose another model.');
@@ -306,10 +324,11 @@ export default function VoiceoverWorkspace() {
         voiceProfile: profile,
         sourceScriptUpdatedAt: scriptRecord.updatedAt,
       };
+      const fresh = readJson<WorkflowState>(workflowStorageKey, initialWorkflow);
       const next: WorkflowState = {
-        ...workflow,
+        ...fresh,
         stages: {
-          ...workflow.stages,
+          ...fresh.stages,
           voiceover: record,
           visuals: undefined,
           audio: undefined,
@@ -322,8 +341,10 @@ export default function VoiceoverWorkspace() {
         setNotice(`${profile === 'universal' ? 'Normal' : 'Advanced'} Voiceover is ready and saved on this device.`);
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Voiceover preparation failed. Please try again.');
+      if (requestError instanceof Error && requestError.name === 'AbortError') { setNotice('Voiceover request cancelled. Nothing was replaced.'); setError(''); }
+      else setError(requestError instanceof Error ? requestError.message : 'Voiceover preparation failed. Please try again.');
     } finally {
+      abortControllerRef.current = null;
       setLoading(false);
     }
   }
@@ -424,7 +445,7 @@ export default function VoiceoverWorkspace() {
             {error ? <p className="voice-message error" role="alert"><span>!</span>{error}</p> : null}
             {notice ? <p className="voice-message success" role="status"><span>✓</span>{notice}</p> : null}
 
-            <footer><div><strong>Automatic protection</strong><span>Full spoken Script · Claim IDs removed · one copy-ready output</span></div><button type="button" disabled={!scriptFinal || !activeModel || loading} onClick={() => void prepareVoiceover()}>{loading ? <><i className="automation-spinner" /> Preparing carefully…</> : <>{outputCurrent ? 'Prepare again' : 'Prepare Voiceover'} <b>→</b></>}</button></footer>
+            <footer><div><strong>Automatic protection</strong><span>Full spoken Script · Claim IDs removed · one copy-ready output</span></div><div className="voice-footer-actions">{loading ? <button type="button" className="script-cancel" onClick={() => abortControllerRef.current?.abort()}>Cancel · {elapsedSeconds}s</button> : null}<button type="button" disabled={!scriptFinal || !activeModel || loading} onClick={() => void prepareVoiceover()}>{loading ? <><i className="automation-spinner" /> Preparing carefully… {elapsedSeconds}s</> : <>{outputCurrent ? 'Prepare again' : 'Prepare Voiceover'} <b>→</b></>}</button></div></footer>
           </section>
 
           {voiceRecord && outputCurrent ? <section className="voice-output">

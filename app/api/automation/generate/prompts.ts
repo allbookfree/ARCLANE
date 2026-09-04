@@ -94,7 +94,14 @@ export function stageMaxTokens(stage: AutomationStage, context?: WorkflowContext
   if (stage === 'audio') return 3200;
   if (stage === 'thumbnails') return 6500;
   if (stage === 'description') return 3600;
-  if (stage === 'shorts') return 10000;
+  if (stage === 'shorts') {
+    // A long short (45 possible clips at the 4–8 second beat range) needs far
+    // more than a 60-second one; scale the budget the same way visuals does so
+    // the response is never truncated into a silently incomplete package.
+    const maxSeconds = Number(context?.shortLength?.max) || 60;
+    const clipEstimate = Math.ceil(maxSeconds / 4);
+    return Math.max(7000, Math.min(16000, 3500 + clipEstimate * 260));
+  }
   return 7000;
 }
 
@@ -1011,6 +1018,7 @@ Create the strongest independently publishable factual micro-story available for
 <timing_caption_rules>
 - Follow the supplied length profile. durationSeconds is a whole number inside its min/max range and matches natural narration pace.
 - timeline starts at 0, has no gap or overlap, and ends exactly at durationSeconds. Shots last 2–12 seconds; normally use purposeful 4–8 second beats.
+- HARD LIMITS: the timeline contains 4 to 45 shots in total; the spoken pace stays between 90 and 210 words per minute; every visualPrompt is at least 90 characters long.
 - Each shot contains the exact words heard during its interval. Do not cut a sentence unnaturally for equal clips.
 - onScreenText is empty or one short useful phrase, number, place, date or contrast. Never caption every spoken word. Keep it under 70 characters and inside the mobile safe area.
 </timing_caption_rules>
@@ -1024,18 +1032,18 @@ Create the strongest independently publishable factual micro-story available for
 ${strictModesty
   ? '- STRICT MODESTY is binding: every woman or girl has covered hair, neck, chest, arms and legs with loose opaque clothing and dignified non-body-emphasizing framing. If this would materially falsify history, use a respectful non-identifying or alternative visual.'
   : '- EVIDENCE-LED MODESTY is binding: all people are dignified and non-sexualized; clothing remains historically responsible and framing avoids body emphasis.'}
-- End every timeline visualPrompt and cover.prompt with exactly this permanent safeguard sentence: "If any woman or girl appears, her hair, neck, chest, arms and legs must be fully covered with loose opaque clothing."
+- Treat this as one immutable episode-wide rule. The application attaches the permanent safeguard sentence to every timeline visualPrompt and cover.prompt after validation, so do not repeat the safeguard sentence inside the JSON items.
 </visual_rules>
 
 <cover_rules>
 - Create one finished custom 9:16 Short cover for channel, search and branding use. It complements but never replaces the opening-frame hook in the Shorts feed.
 - cover.headline is one to five instantly readable words, at most 32 characters, accurate, correctly spelled and different from upload.title. No vague bait, sensational lie, hashtag or punctuation clutter.
-- cover.prompt is a standalone 2160x3840 generation prompt containing the exact headline in quotation marks. Specify one dominant focal subject, one visual tension or unanswered moment, composition, expression or action, period-accurate details, strong mobile contrast, headline position inside safe areas, deliberate negative space, lighting, texture and exclusions.
+- cover.prompt is a standalone 2160x3840 generation prompt containing the exact headline in quotation marks, at least 140 characters long, and stating the format as 9:16. Specify one dominant focal subject, one visual tension or unanswered moment, composition, expression or action, period-accurate details, strong mobile contrast, headline position inside safe areas, deliberate negative space, lighting, texture and exclusions.
 - The cover must match this Short's unique angle, obey permanent strict modesty, avoid gore, sexualization, stereotypes, logos, watermarks, malformed anatomy and fake readable historical documents, and remain legible at small size.
 </cover_rules>
 <audio_rules>
-- audioZones covers 0 through durationSeconds without gap or overlap. Return the smallest number of real sound changes; narration remains primary.
-- Every non-silent zone has one generic searchQuery, never a track title, artist, URL or invented asset. Use source "youtube_audio_library" for music and "youtube_audio_library" or "pixabay" for ambience.
+- audioZones covers 0 through durationSeconds without gap or overlap. Return the smallest number of real sound changes; narration remains primary. HARD LIMIT: at most 10 audio zones.
+- Every non-silent zone has one generic searchQuery, never a track title, artist, URL or invented asset.${faithSafe ? ' Use source "youtube_audio_library" or "pixabay" for ambience only.' : ' Use source "youtube_audio_library" for music and "youtube_audio_library" or "pixabay" for ambience.'}
 - Music volume is -26 to -18 dB. Ambience volume is -30 to -20 dB. Fades are 0–5 seconds. Silence uses searchQuery "", source "none" and volumeDb null.
 ${faithSafe
   ? '- FAITH_SAFE is binding: no music, melody, instruments, percussion, beats, singing, humming, chanting, choir or musical pads. Use only non-musical ambience, practical sound, restrained effects or silence.'

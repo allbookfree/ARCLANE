@@ -197,6 +197,7 @@ export default function ResearchWorkspace() {
     try {
       window.localStorage.setItem(workflowStorageKey, JSON.stringify(next));
       setWorkflow(next);
+      window.dispatchEvent(new Event('arclane:workflow-changed'));
       return true;
     } catch {
       setError('This browser could not save more workflow data. Download or copy the current research before continuing.');

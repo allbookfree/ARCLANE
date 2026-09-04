@@ -14,20 +14,25 @@ export type StudioView =
 
 export const STUDIO_NAVIGATE_EVENT = 'arclane:studio-navigate';
 
+const studioViewBySegment: Record<string, StudioView> = {
+  ideas: 'ideas',
+  research: 'research',
+  scripts: 'scripts',
+  voiceover: 'voiceover',
+  visuals: 'visuals',
+  audio: 'audio',
+  thumbnails: 'thumbnails',
+  description: 'description',
+  shorts: 'shorts',
+  memory: 'memory',
+  settings: 'settings',
+};
+
 export function getStudioViewFromPath(pathname: string): StudioView {
-  const clean = pathname.replace(/\/$/, '');
+  const clean = pathname.replace(/\/$/, '').toLowerCase();
   if (clean === '/studio' || clean === '') return 'overview';
-  if (clean === '/studio/ideas') return 'ideas';
-  if (clean === '/studio/research') return 'research';
-  if (clean === '/studio/scripts') return 'scripts';
-  if (clean === '/studio/voiceover') return 'voiceover';
-  if (clean === '/studio/visuals') return 'visuals';
-  if (clean === '/studio/audio') return 'audio';
-  if (clean === '/studio/thumbnails') return 'thumbnails';
-  if (clean === '/studio/description') return 'description';
-  if (clean === '/studio/shorts') return 'shorts';
-  if (clean === '/studio/memory') return 'memory';
-  if (clean.startsWith('/studio/settings')) return 'settings';
+  const segment = clean.replace(/^\/studio\/?/, '').split('/')[0];
+  if (segment && segment in studioViewBySegment) return studioViewBySegment[segment];
   return 'overview';
 }
 

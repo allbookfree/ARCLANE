@@ -1,7 +1,7 @@
 'use client';
 
 import { jsonrepair } from 'jsonrepair';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { studioNavigate } from '../_lib/navigation';
 import { getSpokenScriptText } from './script-document-view';
 import StudioSidebar from './studio-sidebar';
@@ -150,7 +150,7 @@ function colorValue(value: unknown, fallback: string) {
   return /^#[0-9A-F]{6}$/.test(color) ? color : fallback;
 }
 
-function parseThumbnailPlan(content: string, allowLegacy = false): ThumbnailPlan {
+function parseThumbnailPlan(content: string, allowLegacy = false): { plan: ThumbnailPlan; droppedConcepts: number } {
   const root = parseJsonObject(content);
   const returnedVersion = stringValue(root.version);
   const legacy = legacyPlanVersions.has(returnedVersion);
@@ -162,7 +162,7 @@ function parseThumbnailPlan(content: string, allowLegacy = false): ThumbnailPlan
     throw new Error('The model must return exactly 3 genuinely different Thumbnail options. Your previous options are unchanged; click Create 3 Options again.');
   }
 
-  const concepts = rawConcepts.map((value, index): ThumbnailConcept => {
+  const buildConcept = (value: unknown, index: number): ThumbnailConcept => {
     const raw = asRecord(value);
     const headline = conciseHeadline(raw.headline);
     const requestedMode = stringValue(raw.textMode) as ThumbnailTextMode;
@@ -218,7 +218,7 @@ function parseThumbnailPlan(content: string, allowLegacy = false): ThumbnailPlan
     if (!concept.negativePrompt) concept.negativePrompt = 'logos, watermark, modern objects, fantasy, gore, sexualized imagery, distorted anatomy, crowded collage, tiny clues, inaccurate clothing, generic stock-photo look';
 
     const commonMissing = [concept.conceptName, concept.curiosity, concept.viewerPromise, concept.audienceBridge, concept.titlePartner, concept.testHypothesis, concept.instantRead, concept.visualTension, concept.textReason, concept.subject, concept.composition, concept.truthAnchor, concept.mobileRead, concept.thumbnailPrompt].some((field) => !field);
-    if (commonMissing || concept.thumbnailPrompt.length < 160) {
+    if (commonMissing) {
       throw new Error(`Option ${index + 1} is incomplete. Nothing was replaced; click Create 3 Options again or choose another model.`);
     }
 
@@ -236,13 +236,26 @@ function parseThumbnailPlan(content: string, allowLegacy = false): ThumbnailPlan
       }
     }
     return concept;
-  });
+  };
 
-  const distinctKeys = new Set(concepts.map((concept) => `${concept.angleType}|${concept.subject}|${concept.composition}|${concept.testHypothesis}`.toLowerCase().replace(/\s+/g, ' ')));
-  if (distinctKeys.size !== 3) {
-    throw new Error('The model repeated a Thumbnail direction. Your previous options are unchanged; create three new options with a capable model.');
+  // Item-level salvage: one incomplete or duplicated option no longer erases
+  // the other good options. At least two complete options must survive.
+  const concepts: ThumbnailConcept[] = [];
+  let droppedConcepts = 0;
+  const seenDirectionKeys = new Set<string>();
+  rawConcepts.forEach((value, index) => {
+    try {
+      const concept = buildConcept(value, index);
+      const directionKey = `${concept.angleType}|${concept.subject}|${concept.composition}|${concept.testHypothesis}`.toLowerCase().replace(/\s+/g, ' ');
+      if (seenDirectionKeys.has(directionKey)) { droppedConcepts += 1; return; }
+      seenDirectionKeys.add(directionKey);
+      concepts.push(concept);
+    } catch { droppedConcepts += 1; }
+  });
+  if (concepts.length < 2) {
+    throw new Error(`The model returned only ${concepts.length} usable Thumbnail option${concepts.length === 1 ? '' : 's'} after automatic checks. Your previous options are unchanged; click Create 3 Options again or choose another model.`);
   }
-  if (!legacy) {
+  if (concepts.length === 3 && !legacy) {
     const modes = new Set(concepts.map((concept) => concept.textMode));
     if (!modes.has('text_free') || !modes.has('text_led')) {
       throw new Error('The three options must include at least one text-free and one text-led hypothesis. Your previous options are unchanged.');
@@ -251,20 +264,21 @@ function parseThumbnailPlan(content: string, allowLegacy = false): ThumbnailPlan
 
   const requestedRecommendation = stringValue(root.recommendedId).toUpperCase();
   const recommendedId = concepts.some((concept) => concept.id === requestedRecommendation) ? requestedRecommendation : concepts[0].id;
-  return {
+  const plan: ThumbnailPlan = {
     version: planVersion,
     recommendedId,
     recommendationReason: stringValue(root.recommendationReason) || 'Best initial balance of truthful curiosity, one-glance clarity and selected-story fit.',
     migratedFrom: legacy ? returnedVersion : undefined,
     concepts,
   };
+  return { plan, droppedConcepts };
 }
 
 function readSavedPlan(content: string): ThumbnailPlan | null {
   try {
     const root = parseJsonObject(content);
     if (root.version !== planVersion && !legacyPlanVersions.has(stringValue(root.version))) return null;
-    return parseThumbnailPlan(content, true);
+    return parseThumbnailPlan(content, true).plan;
   } catch {
     return null;
   }
@@ -293,6 +307,15 @@ export default function ThumbnailWorkspace() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!loading) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => { setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)); }, 1000);
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
 
   const selectedIdea = workflow.selectedIdea;
@@ -319,6 +342,7 @@ export default function ThumbnailWorkspace() {
     try {
       window.localStorage.setItem(workflowStorageKey, JSON.stringify(next));
       setWorkflow(next);
+      window.dispatchEvent(new Event('arclane:workflow-changed'));
       return true;
     } catch {
       setError('This browser could not save the Thumbnail Plan. Download or clear older local data, then try again.');
@@ -329,7 +353,7 @@ export default function ThumbnailWorkspace() {
   const savePreference = useCallback((nextProviderId: ProviderId, nextModelId: string) => {
     const preferences = readJson<Record<string, ModelPreference>>(modelPreferenceKey, {});
     preferences.thumbnails = { providerId: nextProviderId, modelId: nextModelId };
-    window.localStorage.setItem(modelPreferenceKey, JSON.stringify(preferences));
+    try { window.localStorage.setItem(modelPreferenceKey, JSON.stringify(preferences)); } catch { /* preference saving is best-effort */ }
   }, []);
 
   useEffect(() => {
@@ -397,6 +421,10 @@ export default function ThumbnailWorkspace() {
       return;
     }
 
+    if ((workflow.stages.description?.content || workflow.stages.shorts?.content)
+      && !window.confirm('Creating new Thumbnail options clears the current Description and Shorts so they cannot repeat an old direction. Continue?')) return;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setLoading(true);
     setError('');
     setNotice('');
@@ -404,6 +432,7 @@ export default function ThumbnailWorkspace() {
       const response = await fetch('/api/automation/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           stage: 'thumbnails',
           provider: connection.providerId,
@@ -425,9 +454,11 @@ export default function ThumbnailWorkspace() {
           },
         }),
       });
-      const result = await response.json() as { output?: string; error?: string };
+      const result = await response.json().catch(() => null) as { output?: string; error?: string; truncated?: boolean } | null;
+      if (!result) throw new Error('The server response could not be read. Check the connection and try again.');
       if (!response.ok || !result.output) throw new Error(result.error || 'The model did not return a usable Thumbnail Plan.');
-      const nextPlan = parseThumbnailPlan(result.output);
+      if (result.truncated) throw new Error("The model's response was cut off by its output limit. Nothing was replaced; try again or choose another model.");
+      const { plan: nextPlan, droppedConcepts: droppedInPlan } = parseThumbnailPlan(result.output);
       const record: StageRecord = {
         content: JSON.stringify(nextPlan, null, 2),
         providerName: connection.providerName,
@@ -439,24 +470,30 @@ export default function ThumbnailWorkspace() {
         sourceScriptUpdatedAt: scriptRecord.updatedAt,
         sourceAudioUpdatedAt: audioRecord.updatedAt,
       };
+      const fresh = readJson<WorkflowState>(workflowStorageKey, initialWorkflow);
       const next: WorkflowState = {
-        ...workflow,
-        stages: { ...workflow.stages, thumbnails: record, description: undefined, shorts: undefined },
+        ...fresh,
+        stages: { ...fresh.stages, thumbnails: record, description: undefined, shorts: undefined },
       };
       if (persistWorkflow(next)) {
-        setNotice('Three complete text-free/text-led Thumbnail hypotheses are saved. Choose one Final direction below.');
+        setNotice(`${nextPlan.concepts.length} complete Thumbnail hypotheses saved${droppedInPlan ? ` (${droppedInPlan} incomplete option${droppedInPlan === 1 ? ' was' : 's were'} dropped automatically)` : ''}. Choose one Final direction below.`);
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Thumbnail planning failed. Your saved work is unchanged.');
+      if (requestError instanceof Error && requestError.name === 'AbortError') { setNotice('Request cancelled. Nothing was replaced.'); setError(''); }
+      else setError(requestError instanceof Error ? requestError.message : 'Thumbnail planning failed. Your saved work is unchanged.');
     } finally {
+      abortControllerRef.current = null;
       setLoading(false);
     }
   }
 
   function selectConcept(id: string) {
     if (!thumbnailRecord || !planCurrent) return;
+    if ((workflow.stages.description?.content || workflow.stages.shorts?.content)
+      && !window.confirm('Changing the Final Thumbnail clears the current Description and Shorts so they cannot repeat the old direction. Continue?')) return;
     const nextRecord = { ...thumbnailRecord, content: JSON.stringify({ ...plan, selectedThumbnailId: id }, null, 2), selectedThumbnailId: id, updatedAt: new Date().toISOString() };
-    const next = { ...workflow, stages: { ...workflow.stages, thumbnails: nextRecord, description: undefined, shorts: undefined } };
+    const fresh = readJson<WorkflowState>(workflowStorageKey, initialWorkflow);
+    const next = { ...fresh, stages: { ...fresh.stages, thumbnails: nextRecord, description: undefined, shorts: undefined } };
     if (persistWorkflow(next)) {
       setError('');
       setNotice(`${plan?.concepts.find((concept) => concept.id === id)?.conceptName ?? 'Thumbnail'} selected as Final.`);
@@ -536,7 +573,7 @@ export default function ThumbnailWorkspace() {
             {!handoffReady ? <div className="thumbnail-prerequisite"><span>!</span><div><strong>The production handoff is incomplete</strong><p>Finish Research, Final Script and one current Audio Plan first.</p></div><a href="/studio/audio" onClick={(e) => studioNavigate('/studio/audio', e)}>Open Audio</a></div> : null}
             {error ? <p className="thumbnail-message error" role="alert"><span>!</span>{error}</p> : null}
             {notice ? <p className="thumbnail-message success" role="status"><span>✓</span>{notice}</p> : null}
-            <div className="thumbnail-build-row"><div><strong>{plan ? 'Create a fresh complete-prompt set without risking this one' : 'Ready for three truthful packaging directions'}</strong><span>A new result replaces saved options only after all three complete Thumbnail prompts pass automatic checks.</span></div><button type="button" disabled={loading || !handoffReady || !activeModel} onClick={() => void buildThumbnailPlan()}>{loading ? <><i className="thumbnail-spinner" /> Designing carefully…</> : <>{plan ? 'Create 3 New Options' : 'Create 3 Options'} <b>→</b></>}</button></div>
+            <div className="thumbnail-build-row"><div><strong>{plan ? 'Create a fresh complete-prompt set without risking this one' : 'Ready for three truthful packaging directions'}</strong><span>A new result replaces saved options only after all three complete Thumbnail prompts pass automatic checks.</span></div><div className="thumbnail-footer-actions">{loading ? <button type="button" className="script-cancel" onClick={() => abortControllerRef.current?.abort()}>Cancel · {elapsedSeconds}s</button> : null}<button type="button" disabled={loading || !handoffReady || !activeModel} onClick={() => void buildThumbnailPlan()}>{loading ? <><i className="thumbnail-spinner" /> Designing carefully… {elapsedSeconds}s</> : <>{plan ? 'Create 3 New Options' : 'Create 3 Options'} <b>→</b></>}</button></div></div>
           </section>
 
           {plan ? <section className="thumbnail-results">

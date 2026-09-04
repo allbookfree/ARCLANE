@@ -1,15 +1,12 @@
 'use client';
 
 import { useMemo, useState, useSyncExternalStore } from 'react';
+import { executeNewVideoReset, exportProjectBackup } from '../_components/new-video-modal';
 
 type JsonRecord = Record<string, unknown>;
-type SavedIdea = { key?: string; idea?: unknown; savedAt?: string; status?: string };
 
 const workflowStorageKey = 'arclane.creator-workflow.v1';
-const connectionStorageKey = 'arclane.model-connections.v1';
-const researchToolsStorageKey = 'arclane.research-tools.v1';
 const workflowChangeEvent = 'arclane:workflow-reset';
-const protectedKeys = new Set([connectionStorageKey, researchToolsStorageKey]);
 
 function parseObject(value: string | null): JsonRecord {
   try {
@@ -41,33 +38,6 @@ function text(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function ideaFingerprint(value: unknown) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
-  const idea = value as JsonRecord;
-  const normalize = (entry: unknown) => text(entry).normalize('NFKC').toLocaleLowerCase()
-    .replace(/[\p{P}\p{S}\s]+/gu, ' ').trim();
-  const title = normalize(idea.title);
-  return title ? [title, normalize(idea.region), normalize(idea.period)].join('|') : '';
-}
-
-function preserveMemory(workflow: JsonRecord) {
-  const selectedIdea = workflow.selectedIdea;
-  const selectedKey = ideaFingerprint(selectedIdea);
-  const original = (Array.isArray(workflow.savedIdeas) ? workflow.savedIdeas : [])
-    .filter((item): item is SavedIdea => Boolean(item && typeof item === 'object' && !Array.isArray(item)));
-  let found = false;
-  const savedIdeas = original.map((item) => {
-    const key = text(item.key) || ideaFingerprint(item.idea);
-    if (!selectedKey || key !== selectedKey) return item;
-    found = true;
-    return { ...item, key: selectedKey, status: 'used' };
-  });
-  if (selectedKey && !found) {
-    savedIdeas.unshift({ key: selectedKey, idea: selectedIdea, savedAt: new Date().toISOString(), status: 'used' });
-  }
-  return savedIdeas;
-}
-
 export default function NewVideoReset() {
   const rawWorkflow = useSyncExternalStore(subscribe, getWorkflowSnapshot, getServerSnapshot);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -83,37 +53,15 @@ export default function NewVideoReset() {
   const hasCurrentProject = Boolean(selectedIdea || Object.keys(stages).length || batches.length);
 
   function downloadBackup() {
-    const backup = {
-      schema: 'arclane-video-project-backup',
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      workflow,
-    };
-    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `arclane-video-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    exportProjectBackup(workflow);
   }
 
   function resetCurrentVideo() {
     try {
-      const nextWorkflow = { stages: {}, ideaBatches: [], savedIdeas: preserveMemory(workflow) };
-      window.localStorage.setItem(workflowStorageKey, JSON.stringify(nextWorkflow));
-
-      const removableKeys: string[] = [];
-      for (let index = 0; index < window.localStorage.length; index += 1) {
-        const key = window.localStorage.key(index);
-        if (!key || !key.startsWith('arclane.') || key === workflowStorageKey || protectedKeys.has(key) || key.includes('memory')) continue;
-        removableKeys.push(key);
-      }
-      removableKeys.forEach((key) => window.localStorage.removeItem(key));
-      window.dispatchEvent(new Event(workflowChangeEvent));
-      window.location.assign('/studio/ideas');
+      // One shared, explicit-registry reset: production content is cleared,
+      // Idea Memory/API connections/preferences stay, the current idea is
+      // archived as "Video made" and the workspace event fires.
+      executeNewVideoReset(workflow);
     } catch {
       setError('The browser could not start a clean video safely. Nothing in Idea Memory or your API connections was intentionally removed.');
     }

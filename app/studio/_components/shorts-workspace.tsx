@@ -1,7 +1,7 @@
 'use client';
 
 import { jsonrepair } from 'jsonrepair';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { studioNavigate } from '../_lib/navigation';
 import { getSpokenScriptText } from './script-document-view';
 import StudioSidebar from './studio-sidebar';
@@ -83,6 +83,11 @@ function parseJsonObject(content: string, label: string) {
   catch { try { return asRecord(JSON.parse(jsonrepair(candidate)) as unknown); } catch { throw new Error(`The ${label} response was incomplete. Your saved work is unchanged; try again or choose another model.`); } }
 }
 function normalizeWords(value: string) { return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+// The model no longer has to repeat the permanent safeguard inside every JSON
+// item; the application guarantees it by attaching it to each prompt here.
+function withSafeguard(text: string) {
+  return normalizeWords(text).includes(normalizeWords(strictModestyPromptRule)) ? text : `${text.replace(/\s+$/, '')} ${strictModestyPromptRule}`;
+}
 function wordSimilarity(left: string, right: string) {
   const a = new Set(normalizeWords(left).split(' ').filter((word) => word.length > 3));
   const b = new Set(normalizeWords(right).split(' ').filter((word) => word.length > 3));
@@ -107,9 +112,10 @@ function parseShortPackage(value: unknown, expectedSlot: ShortSlot, previous: Sh
   if (!angleKey || !angle || !differenceFromEarlier || !Number.isFinite(durationSeconds) || durationSeconds < profile.min || durationSeconds > profile.max) throw new Error(`Short ${expectedSlot} did not contain a complete natural-length story. Nothing was replaced.`);
   if (!upload.title || upload.title.length > 100 || !upload.description || upload.description.length > 500 || !story.hook || !story.payoff || !story.fullVideoBridge) throw new Error(`Short ${expectedSlot} upload or story details were incomplete. Nothing was replaced.`);
   const coverWords = cover.headline.split(/\s+/).filter(Boolean).length;
-  if (!cover.headline || coverWords > 5 || cover.headline.length > 32 || cover.prompt.length < 140 || !/9\s*:\s*16/.test(cover.prompt) || normalizeWords(cover.headline) === normalizeWords(upload.title) || !normalizeWords(cover.prompt).includes(normalizeWords(cover.headline)) || !normalizeWords(cover.prompt).includes(normalizeWords(strictModestyPromptRule))) throw new Error(`Short ${expectedSlot} cover was not a complete, distinct and modest 9:16 thumbnail plan. Nothing was replaced.`);
+  if (!cover.headline || coverWords > 5 || cover.headline.length > 32 || cover.prompt.length < 140 || !/9\s*:\s*16/.test(cover.prompt) || normalizeWords(cover.headline) === normalizeWords(upload.title) || !normalizeWords(cover.prompt).includes(normalizeWords(cover.headline))) throw new Error(`Short ${expectedSlot} cover was not a complete and distinct 9:16 thumbnail plan. Nothing was replaced.`);
+  const modestCover = { ...cover, prompt: withSafeguard(cover.prompt) };
   for (const earlier of previous) {
-    const repeated = normalizeWords(earlier.angleKey) === normalizeWords(angleKey) || wordSimilarity(`${earlier.angle} ${earlier.story.payoff}`, `${angle} ${story.payoff}`) > .78 || normalizeWords(earlier.upload.title) === normalizeWords(upload.title);
+    const repeated = normalizeWords(earlier.angleKey) === normalizeWords(angleKey) || wordSimilarity(`${earlier.angle} ${earlier.story.payoff}`, `${angle} ${story.payoff}`) > .9 || normalizeWords(earlier.upload.title) === normalizeWords(upload.title);
     if (repeated) throw new Error(`Short ${expectedSlot} repeated an earlier angle. Nothing was replaced; build it again for a genuinely different story.`);
   }
 
@@ -118,9 +124,9 @@ function parseShortPackage(value: unknown, expectedSlot: ShortSlot, previous: Sh
   const timeline = rawTimeline.map((value, index): ShortClip => {
     const item = asRecord(value); const startSeconds = Math.round(numberValue(item.startSeconds)); const endSeconds = Math.round(numberValue(item.endSeconds));
     const visual = stringValue(item.visualType) as VisualType;
-    const clip: ShortClip = { id: `SHOT-${String(index + 1).padStart(2, '0')}`, startSeconds, endSeconds, spokenText: stringValue(item.spokenText), onScreenText: stringValue(item.onScreenText), visualType: visualTypes.has(visual) ? visual : 'ai_video', visualPrompt: stringValue(item.visualPrompt), sfxSearch: stringValue(item.sfxSearch) };
+    const clip: ShortClip = { id: `SHOT-${String(index + 1).padStart(2, '0')}`, startSeconds, endSeconds, spokenText: stringValue(item.spokenText), onScreenText: stringValue(item.onScreenText), visualType: visualTypes.has(visual) ? visual : 'ai_video', visualPrompt: withSafeguard(stringValue(item.visualPrompt)), sfxSearch: stringValue(item.sfxSearch) };
     const expectedStart = index ? Math.round(numberValue(asRecord(rawTimeline[index - 1]).endSeconds)) : 0;
-    if (startSeconds !== expectedStart || endSeconds <= startSeconds || endSeconds - startSeconds > 12 || !clip.spokenText || clip.visualPrompt.length < 90 || clip.onScreenText.length > 70 || !normalizeWords(clip.visualPrompt).includes(normalizeWords(strictModestyPromptRule))) throw new Error(`Short ${expectedSlot} shot ${index + 1} was incomplete, mistimed or missing its permanent modesty protection. Nothing was replaced.`);
+    if (startSeconds !== expectedStart || endSeconds <= startSeconds || endSeconds - startSeconds > 12 || !clip.spokenText || clip.visualPrompt.length < 90 || clip.onScreenText.length > 70) throw new Error(`Short ${expectedSlot} shot ${index + 1} was incomplete or mistimed. Nothing was replaced.`);
     return clip;
   });
   if (timeline.at(-1)?.endSeconds !== durationSeconds) throw new Error(`Short ${expectedSlot} visuals did not cover the full duration. Nothing was replaced.`);
@@ -149,14 +155,19 @@ function parseShortPackage(value: unknown, expectedSlot: ShortSlot, previous: Sh
     return zone;
   });
   if (audioZones.at(-1)?.endSeconds !== durationSeconds) throw new Error(`Short ${expectedSlot} audio did not cover the full duration. Nothing was replaced.`);
-  return { version: packageVersion, slot: expectedSlot, settings, angleKey, angle, differenceFromEarlier, durationSeconds, upload, cover, story, timeline, audioZones };
+  return { version: packageVersion, slot: expectedSlot, settings, angleKey, angle, differenceFromEarlier, durationSeconds, upload, cover: modestCover, story, timeline, audioZones };
 }
 function readShortWorkspace(record: StageRecord | undefined): ShortsWorkspaceData {
   if (!record?.content) return emptyWorkspace();
   try {
     const root = parseJsonObject(record.content, 'Shorts workspace'); if (stringValue(root.version) !== workspaceVersion) return emptyWorkspace();
     const raw = Array.isArray(root.slots) ? root.slots : []; const slots: ShortsWorkspaceData['slots'] = [null, null, null];
-    for (let index = 0; index < 3; index += 1) if (raw[index]) slots[index] = parseShortPackage(raw[index], (index + 1) as ShortSlot, slots.slice(0, index).filter(Boolean) as ShortPackage[]);
+    // Isolate each slot: one unreadable slot can no longer hide the others.
+    for (let index = 0; index < 3; index += 1) {
+      if (!raw[index]) continue;
+      try { slots[index] = parseShortPackage(raw[index], (index + 1) as ShortSlot, slots.slice(0, index).filter(Boolean) as ShortPackage[]); }
+      catch { slots[index] = null; }
+    }
     return { version: workspaceVersion, slots };
   } catch { return emptyWorkspace(); }
 }
@@ -193,6 +204,15 @@ export default function ShortsWorkspace() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!loading) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => { setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)); }, 1000);
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   const selectedIdea = workflow.selectedIdea;
   const scriptRecord = workflow.stages.scripts;
@@ -210,13 +230,13 @@ export default function ShortsWorkspace() {
   const fullVoiceover = activePackage?.timeline.map((clip) => clip.spokenText).join(' ') ?? '';
 
   const persistWorkflow = useCallback((next: WorkflowState) => {
-    try { window.localStorage.setItem(workflowStorageKey, JSON.stringify(next)); setWorkflow(next); return true; }
+    try { window.localStorage.setItem(workflowStorageKey, JSON.stringify(next)); setWorkflow(next); window.dispatchEvent(new Event('arclane:workflow-changed')); return true; }
     catch { setError('This browser could not save the Short. Download or clear older local data, then try again.'); return false; }
   }, []);
   const savePreference = useCallback((nextProvider: ProviderId, nextModel: string) => {
     const preferences = readJson<Record<string, ModelPreference>>(modelPreferenceKey, {});
     preferences.shorts = { providerId: nextProvider, modelId: nextModel };
-    window.localStorage.setItem(modelPreferenceKey, JSON.stringify(preferences));
+    try { window.localStorage.setItem(modelPreferenceKey, JSON.stringify(preferences)); } catch { /* preference saving is best-effort */ }
   }, []);
 
   useEffect(() => {
@@ -255,12 +275,15 @@ export default function ShortsWorkspace() {
   }
   function changeModel(next: string) { setModelId(next); if (providerId) savePreference(providerId, next); }
   function changeLength(next: LengthMode) {
-    setLengthMode(next); window.localStorage.setItem(shortLengthPreferenceKey, JSON.stringify({ mode: next }));
+    setLengthMode(next);
+    try { window.localStorage.setItem(shortLengthPreferenceKey, JSON.stringify({ mode: next })); } catch { /* preference saving is best-effort */ }
     setNotice(`Short length set to ${lengthProfiles[next].label}. It will apply when you build this slot.`);
   }
 
+  function cancelBuild() { abortControllerRef.current?.abort(); }
+
   async function buildShort() {
-    if (loading) return;
+    if (loading || abortControllerRef.current) return;
     if (!handoffReady || !selectedIdea || !scriptRecord || !descriptionRecord || !handoff) { setError('Choose one Final title in Description before creating a Short.'); return; }
     if (!priorSlotReady) { setError(`Complete Short ${activeSlot - 1} first so Short ${activeSlot} can be genuinely different.`); return; }
     const connection = connections.find((item) => item.providerId === providerId); const model = connection?.models.find((item) => item.id === modelId);
@@ -268,6 +291,8 @@ export default function ShortsWorkspace() {
     if (shorts.slots.slice(activeSlot).some(Boolean) && !window.confirm(`Rebuilding Short ${activeSlot} will clear later Shorts so their angles can be checked again. Continue?`)) return;
 
     const settings: ShortSettings = { lengthMode, visualModestyMode, audioMode };
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setLoading(true); setError(''); setNotice('');
     try {
       const previous = shorts.slots.slice(0, activeSlot - 1).filter(Boolean) as ShortPackage[];
@@ -276,7 +301,7 @@ export default function ShortsWorkspace() {
         hook: item.story.hook, payoff: item.story.payoff, fullVideoBridge: item.story.fullVideoBridge,
       }));
       const response = await fetch('/api/automation/generate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
         body: JSON.stringify({
           stage: 'shorts', provider: connection.providerId, providerName: connection.providerName, model: model.id, apiKey: connection.apiKey,
           baseUrl: connection.baseUrl, authMethod: connection.authMethod, headerName: connection.headerName, completionPath: connection.completionPath,
@@ -288,21 +313,37 @@ export default function ShortsWorkspace() {
           },
         }),
       });
-      const result = await response.json() as { output?: string; error?: string };
+      const result = await response.json().catch(() => null) as { output?: string; error?: string; truncated?: boolean } | null;
+      if (!result) throw new Error(`The server response could not be read while building Short ${activeSlot}. Check the connection and try again.`);
       if (!response.ok || !result.output) throw new Error(result.error || `The model did not return a usable Short ${activeSlot}.`);
+      if (result.truncated) throw new Error(`The model's response was cut off by its output limit before finishing Short ${activeSlot}. Nothing was replaced; try again, choose a shorter length, or use a model with a larger output limit.`);
       const nextPackage = parseShortPackage(result.output, activeSlot, previous, settings);
       const nextSlots = shorts.slots.map((item, index) => index < activeSlot - 1 ? item : index === activeSlot - 1 ? nextPackage : null) as ShortsWorkspaceData['slots'];
       const record: StageRecord = {
         content: JSON.stringify({ version: workspaceVersion, slots: nextSlots }, null, 2), providerName: connection.providerName, modelName: model.name, updatedAt: new Date().toISOString(),
         sourceIdeaId: selectedIdea.id, sourceScriptUpdatedAt: scriptRecord.updatedAt, sourceDescriptionUpdatedAt: descriptionRecord.updatedAt,
       };
-      if (persistWorkflow({ ...workflow, stages: { ...workflow.stages, shorts: record } })) setNotice(`Short ${activeSlot} is complete and independently publishable. You may stop here or optionally prepare another distinct Short.`);
+      const fresh = readJson<WorkflowState>(workflowStorageKey, initialWorkflow);
+      if (persistWorkflow({ ...fresh, stages: { ...fresh.stages, shorts: record } })) setNotice(`Short ${activeSlot} is complete and independently publishable. You may stop here or optionally prepare another distinct Short.`);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : `Short ${activeSlot} could not be created. Your saved work is unchanged.`);
-    } finally { setLoading(false); }
+      if (requestError instanceof Error && requestError.name === 'AbortError') { setNotice(`Short ${activeSlot} request cancelled. Nothing was changed.`); setError(''); }
+      else setError(requestError instanceof Error ? requestError.message : `Short ${activeSlot} could not be created. Your saved work is unchanged.`);
+    } finally { abortControllerRef.current = null; setLoading(false); }
   }
 
-  async function copyText(value: string, message: string) { await navigator.clipboard.writeText(value); setError(''); setNotice(message); }
+  async function copyText(value: string, message: string) {
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
+      else {
+        const field = document.createElement('textarea');
+        field.value = value; field.setAttribute('readonly', ''); field.style.position = 'fixed'; field.style.opacity = '0';
+        document.body.appendChild(field); field.select();
+        const copied = document.execCommand('copy'); field.remove();
+        if (!copied) throw new Error('Copy was blocked');
+      }
+      setError(''); setNotice(message);
+    } catch { setError('This browser blocked clipboard access. Please select the text and copy it manually.'); setNotice(''); }
+  }
   function downloadPackage() {
     if (!activePackage) return;
     const blob = new Blob([JSON.stringify(activePackage, null, 2)], { type: 'application/json;charset=utf-8' }); const url = URL.createObjectURL(blob);
@@ -338,7 +379,7 @@ export default function ShortsWorkspace() {
           <div className="shorts-policy"><div><span>VISUAL POLICY</span><strong>Strict modesty · Always on</strong></div><div><span>AUDIO POLICY</span><strong>Faith-safe sound · Always on</strong></div><p>These two creator policies are permanently protected for every Short.</p></div>
           <details className="shorts-direction"><summary><span>Optional: special direction for Short {activeSlot}</span><small>Usually leave this closed</small></summary><textarea value={direction} onChange={(event) => setDirection(event.target.value)} placeholder="Example: Focus on the worker's final decision, but do not repeat Short 1." /></details>
           {error && <div className="shorts-message error"><span>!</span><p>{error}</p></div>}{notice && <div className="shorts-message success"><span>✓</span><p>{notice}</p></div>}
-          <footer><div><strong>{!handoffReady ? 'Final Description required' : !priorSlotReady ? `Short ${activeSlot - 1} must be completed first` : activePackage ? `Short ${activeSlot} is safely saved` : `Short ${activeSlot} is ready to build`}</strong><span>{lengthProfiles[lengthMode].detail} Existing work changes only after a complete result passes every check.</span></div><button type="button" disabled={loading || !handoffReady || !priorSlotReady || !activeModel} onClick={() => void buildShort()}>{loading ? <><i className="shorts-spinner" /> Building one complete Short…</> : <>{activePackage ? `Rebuild Short ${activeSlot}` : `Create Short ${activeSlot}`} <b>→</b></>}</button></footer>
+          <footer><div><strong>{!handoffReady ? 'Final Description required' : !priorSlotReady ? `Short ${activeSlot - 1} must be completed first` : activePackage ? `Short ${activeSlot} is safely saved` : `Short ${activeSlot} is ready to build`}</strong><span>{lengthProfiles[lengthMode].detail} Existing work changes only after a complete result passes every check.</span></div><div className="shorts-footer-actions">{loading ? <button type="button" className="shorts-cancel" onClick={cancelBuild}>Cancel · {elapsedSeconds}s</button> : null}<button type="button" disabled={loading || !handoffReady || !priorSlotReady || !activeModel} onClick={() => void buildShort()}>{loading ? <><i className="shorts-spinner" /> Building one complete Short… {elapsedSeconds}s</> : <>{activePackage ? `Rebuild Short ${activeSlot}` : `Create Short ${activeSlot}`} <b>→</b></>}</button></div></footer>
         </section>
 
         {shortsRecord && !workspaceCurrent && <div className="shorts-stale">The Final Script or Description changed. Earlier Shorts are preserved, but create fresh versions before publishing.</div>}

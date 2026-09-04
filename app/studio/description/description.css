@@ -210,3 +210,17 @@
   .description-title-card footer { grid-template-columns: 1fr; }
   .description-recommendation { grid-template-columns: 1fr; }
 }
+.description-build-row .description-footer-actions { display: flex; align-items: center; gap: 10px; }
+.description-build-row .script-cancel {
+  min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 16px; border: 1px solid #d8dee8; border-radius: 11px; background: #fff;
+  color: #8992a0; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; box-shadow: none;
+}
+.description-build-row .script-cancel:hover:not(:disabled) { background: #f3f5f9; color: #213453; }
+.description-build-row .description-footer-actions { display: flex; align-items: center; gap: 10px; }
+.description-build-row .script-cancel {
+  min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 16px; border: 1px solid #d8dee8; border-radius: 11px; background: #fff;
+  color: #8992a0; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; box-shadow: none;
+}
+.description-build-row .script-cancel:hover:not(:disabled) { background: #f3f5f9; color: #213453; }

@@ -23,7 +23,7 @@ type GenerateRequest = {
   webSearchEnabled?: boolean;
 };
 type Source = { title: string; url: string };
-type ProviderResult = { output: string; sources: Source[]; grounded: boolean; attempts?: number };
+type ProviderResult = { output: string; sources: Source[]; grounded: boolean; attempts?: number; truncated?: boolean };
 type ProviderFetchResult = { payload: unknown; attempts: number };
 type ProviderRequestProfile = { timeoutMs: number; maxAttempts: number; totalBudgetMs: number; taskLabel: string };
 
@@ -256,7 +256,9 @@ function extractOpenAI(payload: unknown): ProviderResult {
 
   const output = [...new Set(textParts.map((part) => part.trim()).filter(Boolean))].join('\n\n');
   if (!output) throw new Error('OpenAI returned no text for this stage. Try a compatible generation model.');
-  return { output, sources: uniqueSources(sources), grounded: sources.length > 0 };
+  // The Responses API reports a hit output limit as status "incomplete".
+  const truncated = root.status === 'incomplete';
+  return { output, sources: uniqueSources(sources), grounded: sources.length > 0, truncated };
 }
 
 async function generateOpenAI(key: string, model: string, stage: AutomationStage, prompt: string, maxTokens: number, webEnabled: boolean) {
@@ -296,7 +298,8 @@ function extractAnthropic(payload: unknown): ProviderResult {
   }
   const output = textParts.join('\n\n').trim();
   if (!output) throw new Error('Anthropic returned no text for this stage. Try a compatible Claude model.');
-  return { output, sources: uniqueSources(sources), grounded: sources.length > 0 };
+  const truncated = root.stop_reason === 'max_tokens';
+  return { output, sources: uniqueSources(sources), grounded: sources.length > 0, truncated };
 }
 
 async function generateAnthropic(key: string, model: string, stage: AutomationStage, prompt: string, maxTokens: number, webEnabled: boolean) {
@@ -361,7 +364,8 @@ function extractGemini(payload: unknown): ProviderResult {
     const reason = typeof feedback.blockReason === 'string' ? ` (${feedback.blockReason})` : '';
     throw new Error(`Gemini returned no text for this stage${reason}. Try a compatible generation model.`);
   }
-  return { output, sources: uniqueSources(sources), grounded: sources.length > 0 };
+  const truncated = first.finishReason === 'MAX_TOKENS' || first.finish_reason === 'MAX_TOKENS';
+  return { output, sources: uniqueSources(sources), grounded: sources.length > 0, truncated };
 }
 
 const visualResponseJsonSchema = {
@@ -512,7 +516,8 @@ async function generateCustom(body: GenerateRequest, prompt: string, maxTokens: 
       .filter((text): text is string => typeof text === 'string').join('\n\n');
   }
   if (!output.trim()) throw new Error('The custom provider returned no compatible text output.');
-  return { output: output.trim(), sources: [], grounded: false, attempts: call.attempts } satisfies ProviderResult;
+  const truncated = asRecord(choices[0]).finish_reason === 'length';
+  return { output: output.trim(), sources: [], grounded: false, attempts: call.attempts, truncated } satisfies ProviderResult;
 }
 
 export async function POST(request: Request) {
@@ -563,6 +568,7 @@ export async function POST(request: Request) {
       provider,
       model,
       stage,
+      truncated: result.truncated === true,
       webSearchEnabled: canUseWeb,
       researchMode: stage === 'research'
         ? externalEvidence ? 'external-evidence' : result.grounded ? 'grounded' : 'verification-plan'

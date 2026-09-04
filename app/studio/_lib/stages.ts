@@ -90,7 +90,7 @@ const legacyStageMap: Record<LegacyStageId, StudioStageId> = {
 
 export function getStudioStage(id: StudioStageId | LegacyStageId) {
   const currentId = id in legacyStageMap ? legacyStageMap[id as LegacyStageId] : id as StudioStageId;
-  return studioStages.find((stage) => stage.id === currentId)!;
+  return studioStages.find((stage) => stage.id === currentId) ?? studioStages[0];
 }
 
 export function getPreviousStage(id: StudioStageId) {
