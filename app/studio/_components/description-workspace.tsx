@@ -248,7 +248,6 @@ function trafficLabel(fit: TrafficFit) {
 }
 
 export default function DescriptionWorkspace() {
-  const [hydrated, setHydrated] = useState(false);
   const [connections, setConnections] = useState<Selection[]>([]);
   const [workflow, setWorkflow] = useState<WorkflowState>(initialWorkflow);
   const [providerId, setProviderId] = useState<ProviderId | ''>('');
@@ -310,7 +309,6 @@ export default function DescriptionWorkspace() {
     setWorkflow(savedWorkflow);
     setProviderId(preferredConnection?.providerId ?? '');
     setModelId(preferredModel?.id ?? '');
-    setHydrated(true);
     window.addEventListener('storage', refreshConnections);
     window.addEventListener(connectionChangeEvent, refreshConnections);
     return () => {

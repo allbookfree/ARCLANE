@@ -1,3 +1,5 @@
+import { accessGateResponse } from '../../../_lib/access';
+
 type UsageRequest = { apiKey?: string };
 
 type UsageData = {
@@ -94,6 +96,8 @@ function parseUsage(payload: unknown): UsageData | null {
 }
 
 export async function POST(request: Request) {
+  const denied = await accessGateResponse(request);
+  if (denied) return denied;
   try {
     const body = await request.json() as UsageRequest;
     const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';

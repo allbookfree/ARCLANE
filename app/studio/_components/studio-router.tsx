@@ -27,6 +27,7 @@ export default function StudioRouter({ initialView = 'overview' }: StudioRouterP
     return initialView;
   });
 
+  /* eslint-disable react-hooks/set-state-in-effect -- this effect reconciles the view with the browser URL after mount */
   useEffect(() => {
     const currentPathView = getStudioViewFromPath(window.location.pathname);
     if (currentPathView !== view) {
@@ -53,7 +54,8 @@ export default function StudioRouter({ initialView = 'overview' }: StudioRouterP
       window.removeEventListener('popstate', handlePopState);
       window.removeEventListener(STUDIO_NAVIGATE_EVENT, handleStudioNavigate);
     };
-  }, []);
+  }, [view]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   switch (view) {
     case 'overview':

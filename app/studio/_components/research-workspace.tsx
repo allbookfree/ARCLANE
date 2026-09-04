@@ -157,7 +157,18 @@ export default function ResearchWorkspace() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const requestInFlight = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!loading) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   const activeRecord = workflow.stages.research;
   const selectedIdea = workflow.selectedIdea;
@@ -296,6 +307,8 @@ export default function ResearchWorkspace() {
     }
     if (hasDownstreamWork() && !window.confirm('Replacing this Research will clear the current Script and every later production output so stale facts are not reused. Continue?')) return;
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     requestInFlight.current = true;
     setLoading(true);
     setError('');
@@ -314,6 +327,7 @@ export default function ResearchWorkspace() {
         const evidenceResponse = await fetch('/api/research/evidence', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({ provider: 'firecrawl', apiKey: firecrawlApiKey, idea: selectedIdea }),
         });
         const evidence = await evidenceResponse.json() as EvidenceResult;
@@ -333,6 +347,7 @@ export default function ResearchWorkspace() {
       const response = await fetch('/api/automation/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           stage: 'research',
           provider: connection.providerId,
@@ -412,9 +427,15 @@ export default function ResearchWorkspace() {
         }
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Research generation failed. Please try again.');
-      setNotice('');
+      if (requestError instanceof Error && requestError.name === 'AbortError') {
+        setNotice('Research cancelled. Nothing was changed; the previous version stays safe.');
+        setError('');
+      } else {
+        setError(requestError instanceof Error ? requestError.message : 'Research generation failed. Please try again.');
+        setNotice('');
+      }
     } finally {
+      abortControllerRef.current = null;
       requestInFlight.current = false;
       setLoading(false);
     }
@@ -529,6 +550,21 @@ export default function ResearchWorkspace() {
     studioNavigate('/studio/scripts');
   }
 
+  // Manual escape hatch for the automatic handoff gate: the creator—not the
+  // checker—decides when a blocked Research version may still move forward.
+  async function continueWithoutVerification() {
+    if (!draft.trim()) {
+      setError('Build the Research document before continuing to Script.');
+      return;
+    }
+    if (!saveDraft(false)) return;
+    studioNavigate('/studio/scripts');
+  }
+
+  function cancelGeneration() {
+    abortControllerRef.current?.abort();
+  }
+
   return (
     <main className="module-shell module-violet research-shell">
       <StudioSidebar activeStageId="research" />
@@ -603,7 +639,7 @@ export default function ResearchWorkspace() {
             {error ? <p className="research-message error" role="alert"><span>!</span>{error}</p> : null}
             {notice ? <p className="research-message success" role="status"><span>✓</span>{notice}</p> : null}
 
-            <footer><div><strong>Research protection</strong><span>Single job · one search engine at a time · bounded safe retry · unsupported claims must be labelled</span></div><button type="button" disabled={!selectedIdea || !activeModel || loading} onClick={() => void generateResearch()}>{loading ? <><i className="automation-spinner" /> Researching carefully…</> : <>{activeRecord ? 'Rebuild research brief' : 'Build research brief'} <b>→</b></>}</button></footer>
+            <footer><div><strong>Research protection</strong><span>Single job · one search engine at a time · bounded safe retry · unsupported claims must be labelled</span></div><div className="research-footer-actions">{loading ? <button type="button" className="research-cancel" onClick={cancelGeneration}>Cancel · {elapsedSeconds}s</button> : null}<button type="button" disabled={!selectedIdea || !activeModel || loading} onClick={() => void generateResearch()}>{loading ? <><i className="automation-spinner" /> Researching carefully… {elapsedSeconds}s</> : <>{activeRecord ? 'Rebuild research brief' : 'Build research brief'} <b>→</b></>}</button></div></footer>
           </section>
 
           {activeRecord ? (
@@ -615,7 +651,9 @@ export default function ResearchWorkspace() {
 
               <section className={`research-handoff-gate${researchReadyForScript ? ' passed' : ' blocked'}`}>
                 <div className="research-handoff-gate-mark">{researchReadyForScript ? '✓' : '↻'}</div>
-                <div><p>Automatic Research check</p><h3>{researchReadyForScript ? 'Research is ready for Script' : 'One automatic verification pass is needed'}</h3><span>{researchReadyForScript ? 'The evidence structure and source trail passed automatically. The linked sources remain available whenever you want to inspect them.' : automaticEvidenceMode ? `You do not need to check technical scores. Use “${automaticRepairLabel}” below; the system will rebuild, replace this draft, check it and continue only if it is safe.` : 'Connect Firecrawl or choose a search-capable AI model. This draft stays safe and will not be sent to Script.'}</span></div>
+                <div><p>Automatic Research check</p><h3>{researchReadyForScript ? 'Research is ready for Script' : 'One automatic verification pass is needed'}</h3><span>{researchReadyForScript ? 'The evidence structure and source trail passed automatically. The linked sources remain available whenever you want to inspect them.' : automaticEvidenceMode ? `You do not need to check technical scores. Use “${automaticRepairLabel}” below; the system will rebuild, replace this draft, check it and continue only if it is safe.` : 'Connect Firecrawl or choose a search-capable AI model. This draft stays safe and will not be sent to Script.'}</span>
+                  {!researchReadyForScript ? <button type="button" className="research-handoff-gate-override" disabled={loading} onClick={() => void continueWithoutVerification()}>Continue to Script without full verification →</button> : null}
+                </div>
               </section>
 
               <div className="research-viewbar">
@@ -637,7 +675,7 @@ export default function ResearchWorkspace() {
           <footer className="research-next">
             <a href="/studio/ideas" onClick={(e) => studioNavigate('/studio/ideas', e)}><span>Previous stage</span><strong>← Ideas</strong></a>
             <div><span>Current production idea</span><strong>{selectedIdea?.title ?? 'Nothing selected'}</strong></div>
-            <button type="button" disabled={!activeRecord || loading} onClick={() => void continueToScript()}><span>{loading ? 'Working automatically…' : researchReadyForScript ? 'Continue automatically' : automaticRepairLabel}</span><strong>Script <i>→</i></strong></button>
+            <button type="button" disabled={!activeRecord || loading} onClick={() => void continueToScript()}><span>{loading ? `Working automatically… ${elapsedSeconds}s` : researchReadyForScript ? 'Continue automatically' : automaticRepairLabel}</span><strong>Script <i>→</i></strong></button>
           </footer>
         </div>
       </section>

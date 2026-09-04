@@ -14,3 +14,19 @@
 @media (max-width: 760px) {
   .research-handoff-gate { padding: 15px 20px; }
 }
+.research-handoff-gate-override {
+  margin-top: 10px;
+  padding: 9px 14px;
+  border: 1px solid rgba(134, 77, 25, .38);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .78);
+  color: #7b461d;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .01em;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+.research-handoff-gate-override:hover:not(:disabled) { background: #7b461d; color: #fff; }
+.research-handoff-gate-override:disabled { cursor: not-allowed; opacity: .5; }

@@ -301,7 +301,6 @@ function providerMark(providerId: ProviderId) {
 }
 
 export default function AudioWorkspace() {
-  const [hydrated, setHydrated] = useState(false);
   const [connections, setConnections] = useState<Selection[]>([]);
   const [workflow, setWorkflow] = useState<WorkflowState>(initialWorkflow);
   const [providerId, setProviderId] = useState<ProviderId | ''>('');
@@ -394,7 +393,6 @@ export default function AudioWorkspace() {
     setAudioMode(savedMode);
     setProviderId(firstConnection?.providerId ?? '');
     setModelId(firstModel?.id ?? '');
-    setHydrated(true);
     window.addEventListener('storage', refreshConnections);
     window.addEventListener(connectionChangeEvent, refreshConnections);
     return () => {

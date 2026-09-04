@@ -17,6 +17,9 @@ const isVercelBuild = process.env.VERCEL === '1' || process.env.NITRO_PRESET ===
 const localBindingConfig = {
   main: 'vinext/server/app-router-entry',
   compatibility_flags: ['nodejs_compat'],
+  // Node env vars do not reach the workerd runtime automatically; forward the
+  // optional access-gate code as a wrangler var so local dev can lock too.
+  vars: { ARCLANE_ACCESS_CODE: process.env.ARCLANE_ACCESS_CODE ?? '' },
   d1_databases: d1
     ? [
         {
@@ -38,15 +41,16 @@ const localBindingConfig = {
 
 export default defineConfig(async () => {
   if (isVercelBuild) {
-    // Vercel serverless functions default to a 10s timeout, which kills long
-    // AI generation stages (Research/Script/Visuals/Voiceover). Raise it, but
-    // stay within the active plan's limit: Hobby caps at 60s, Pro at 300s.
-    // Override per deployment with VERCEL_MAX_DURATION in the Vercel project
-    // environment (e.g. 300 on Pro). The value is clamped so an unsafe choice
-    // never produces a build-breaking config.
+    // Vercel kills functions that exceed their configured maxDuration, which
+    // silently drops long AI generation stages (Research/Script/Visuals/
+    // Voiceover) before the provider answers. Fluid compute allows 300s on
+    // every plan, so default to 300s and stay within it. Override per
+    // deployment with VERCEL_MAX_DURATION in the Vercel project environment.
+    // The value is clamped so an unsafe choice never produces a
+    // build-breaking config.
     const vercelMaxDuration = Math.min(
       300,
-      Math.max(10, Number(process.env.VERCEL_MAX_DURATION) || 60),
+      Math.max(10, Number(process.env.VERCEL_MAX_DURATION) || 300),
     );
     return {
       css: { postcss: { plugins: [tailwindcss()] } },

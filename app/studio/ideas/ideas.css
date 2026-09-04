@@ -344,6 +344,25 @@
   transition: transform 160ms ease, background 160ms ease, opacity 160ms ease;
 }
 .idea-pro-panel > footer button:hover:not(:disabled) { transform: translateY(-2px); background: var(--idea-blue-deep); }
+.idea-pro-panel > footer .idea-pro-footer-actions { display: flex; align-items: center; gap: 10px; }
+.idea-pro-panel > footer .idea-pro-cancel {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  border: 1px solid var(--idea-line);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--idea-muted);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background 160ms ease, color 160ms ease;
+}
+.idea-pro-panel > footer .idea-pro-cancel:hover:not(:disabled) { transform: none; background: #f3f5f9; color: var(--idea-blue-deep); }
 .idea-pro-panel button:disabled,
 .idea-pro-next button:disabled { cursor: not-allowed; opacity: .45; box-shadow: none; }
 

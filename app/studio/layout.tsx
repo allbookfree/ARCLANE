@@ -19,7 +19,14 @@ import './memory/memory.css';
 import './settings/research-tools.css';
 import './settings/research-tools-balance.css';
 import './settings/new-video-reset.css';
+import './settings/backup-restore.css';
+import './access-gate.css';
+import AccessGate from './_components/access-gate';
 
 export default function StudioLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return children;
+  return (
+    <AccessGate>
+      {children}
+    </AccessGate>
+  );
 }

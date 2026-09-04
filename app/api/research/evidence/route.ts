@@ -1,3 +1,5 @@
+import { accessGateResponse } from '../../_lib/access';
+
 type IdeaInput = {
   title?: string;
   premise?: string;
@@ -38,6 +40,12 @@ class FirecrawlError extends Error {
 
 const retryableStatuses = new Set([408, 429, 500, 502, 503, 504]);
 
+// All three search lanes (every attempt plus retry wait) must finish inside
+// this window so a graceful error reaches the browser before the hosting
+// platform (Vercel, 300s on every plan) can cut the function off.
+const TOTAL_EVIDENCE_BUDGET_MS = 280000;
+const MIN_ATTEMPT_HEADROOM_MS = 12000;
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? value as Record<string, unknown> : {};
 }
@@ -76,9 +84,13 @@ function friendlyError(status: number, payload: unknown, retryAfter?: number) {
   return detail ? `Firecrawl could not complete the search: ${detail.slice(0, 400)}` : 'Firecrawl could not complete the search.';
 }
 
-async function firecrawlSearch(apiKey: string, query: string) {
+async function firecrawlSearch(apiKey: string, query: string, deadline: number) {
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const remaining = deadline - Date.now();
+    if (remaining < MIN_ATTEMPT_HEADROOM_MS) {
+      throw new FirecrawlError('Firecrawl did not finish this search lane inside the overall evidence time window. The search was stopped before the host could cut it off.', 504, attempt);
+    }
     let response: Response;
     try {
       response = await fetch('https://api.firecrawl.dev/v2/search', {
@@ -99,15 +111,16 @@ async function firecrawlSearch(apiKey: string, query: string) {
           },
         }),
         redirect: 'manual',
-        signal: AbortSignal.timeout(90000),
+        signal: AbortSignal.timeout(Math.min(90000, remaining)),
       });
     } catch (error) {
       const timedOut = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
-      if (attempt < maxAttempts) {
+      const outOfTime = deadline - Date.now() < MIN_ATTEMPT_HEADROOM_MS;
+      if (!timedOut && !outOfTime && attempt < maxAttempts) {
         await waitFor(700 * (2 ** (attempt - 1)) + Math.floor(Math.random() * 300));
         continue;
       }
-      throw new FirecrawlError(timedOut ? 'Firecrawl took longer than 90 seconds and timed out after safe retries.' : 'Firecrawl could not be reached after safe retries.', timedOut ? 504 : 502, attempt);
+      throw new FirecrawlError(timedOut ? 'Firecrawl took longer than the allowed search window and timed out after safe retries.' : 'Firecrawl could not be reached after safe retries.', timedOut ? 504 : 502, attempt);
     }
 
     if (response.status >= 300 && response.status < 400) {
@@ -121,7 +134,7 @@ async function firecrawlSearch(apiKey: string, query: string) {
     if (retryableStatuses.has(response.status) && attempt < maxAttempts) {
       const fallback = 800 * (2 ** (attempt - 1)) + Math.floor(Math.random() * 350);
       const waitMilliseconds = retryAfter !== undefined ? retryAfter * 1000 : fallback;
-      if (waitMilliseconds <= 8000) {
+      if (waitMilliseconds <= 8000 && waitMilliseconds + MIN_ATTEMPT_HEADROOM_MS < deadline - Date.now()) {
         await waitFor(waitMilliseconds);
         continue;
       }
@@ -268,6 +281,8 @@ function buildEvidencePack(idea: IdeaInput, lanes: SearchLane[], sources: Firecr
 }
 
 export async function POST(request: Request) {
+  const denied = await accessGateResponse(request);
+  if (denied) return denied;
   try {
     const body = await request.json() as EvidenceRequest;
     const apiKey = textValue(body.apiKey);
@@ -279,6 +294,7 @@ export async function POST(request: Request) {
     if (JSON.stringify(idea).length > 12000) return Response.json({ error: 'The selected idea is too large for one evidence search.' }, { status: 413 });
 
     const lanes = buildSearchLanes(idea);
+    const deadline = Date.now() + TOTAL_EVIDENCE_BUDGET_MS;
     const collected: FirecrawlSource[] = [];
     const warnings: string[] = [];
     let totalAttempts = 0;
@@ -288,8 +304,12 @@ export async function POST(request: Request) {
 
     for (let index = 0; index < lanes.length; index += 1) {
       const lane = lanes[index];
+      if (index > 0 && deadline - Date.now() < MIN_ATTEMPT_HEADROOM_MS) {
+        warnings.push(`Remaining search lane${lanes.length - index === 1 ? '' : 's'} were skipped to stay inside the safe evidence time window.`);
+        break;
+      }
       try {
-        const call = await firecrawlSearch(apiKey, lane.query);
+        const call = await firecrawlSearch(apiKey, lane.query, deadline);
         totalAttempts += call.attempts;
         searchesCompleted += 1;
         collected.push(...parseSources(call.payload, lane.name));

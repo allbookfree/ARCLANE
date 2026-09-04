@@ -1,6 +1,6 @@
 # Arclane Creator Studio — Project Memory
 
-Last updated: 2026-08-25
+Last updated: 2026-09-05
 
 ## Purpose
 
@@ -97,10 +97,11 @@ The Visuals section implementation and local validation are complete. Prepare on
 
 ## Vercel deployment notes
 
-- Production build uses the Nitro Vercel preset via `NITRO_PRESET=vercel npm run vercel-build`. `vite.config.ts` now sets `vercel.functionRules['/api/**'].maxDuration` from `VERCEL_MAX_DURATION`, defaulting to 60 and clamped between 10 and 300.
-- Root cause of "some options don't work after GitHub → Vercel": Vercel serverless functions default to a 10-second timeout, which silently killed long generation stages (Research, Script, Visuals, Voiceover) while short stages appeared to work locally. Raising `maxDuration` fixes it.
-- On Vercel Hobby (60-second cap) leave `VERCEL_MAX_DURATION` unset or set `60`. On Pro, add project environment variable `VERCEL_MAX_DURATION=300` so the longest stages can finish.
+- Production build uses the Nitro Vercel preset via `NITRO_PRESET=vercel npm run vercel-build`. `vite.config.ts` sets `vercel.functionRules['/api/**'].maxDuration` from `VERCEL_MAX_DURATION`, defaulting to 300 and clamped between 10 and 300.
+- Root cause of "some options don't work after GitHub → Vercel": Vercel serverless functions killed long generation stages (Research, Script, Visuals, Voiceover) at the configured timeout, so requests ended with no output. The default is now 300s (the Fluid-compute maximum on every current plan), and every provider/Firecrawl call chain is budgeted to 280s server-side so a graceful error always reaches the browser before the platform can cut the function off.
+- `VERCEL_MAX_DURATION` stays available as an override; no value is required on any current plan. Set it below 300 only to intentionally cap provider wait time.
 - No server-side secrets are required: provider API keys live in browser local storage and are sent in the request body to the same-origin `/api/*` routes, which proxy to the providers.
+- Optional private deployment: set `ARCLANE_ACCESS_CODE` (at least 4 characters) in the Vercel project environment to lock `/studio` and every `/api/*` route behind one access-code prompt. The device stays unlocked for 30 days via an HttpOnly cookie. Without the variable the gate is completely inactive (local development included); in local dev the value is forwarded to workerd through `vars` in `vite.config.ts`.
 
 ## Validation record
 
@@ -118,4 +119,13 @@ On 2026-08-27, fixed the Vercel hosting issue where Studio and generation stages
 - Resolved Node.js 24 vs Vercel Serverless runtime mismatch: updated `package.json` engines to `>=20.0.0` and explicitly configured Nitro Vercel functions to use `runtime: 'nodejs22.x'` with `maxDuration` applied to both base serverless functions and `/api/**` route handlers.
 - Hardened `app/layout.tsx` `metadataBase` to safely normalize protocol headers when `NEXT_PUBLIC_SITE_URL` or `VERCEL_URL` is set without `https://`.
 - Full TypeScript validation (`tsc --noEmit`), build verification (`NITRO_PRESET=vercel npm run vercel-build`), and function config inspection (`.vc-config.json`) passed cleanly.
+
+On 2026-09-05, reliability hardening, workspace cleanup and structure cleanup passed targeted linting, TypeScript checking and verification:
+- Vercel function duration default raised 60 → 300 with a 280s server-side budget for every provider/Firecrawl chain (graceful errors replace platform kills).
+- Ideas now repairs near-JSON with `jsonrepair`, removes Idea-Memory duplicates instead of rejecting the batch, and accepts slightly short batches (≥6) with a clear notice instead of discarding everything.
+- Ideas and Research gained Cancel + elapsed-time display during generation; Research gained a manual "Continue to Script without full verification" override for the automatic handoff gate.
+- Settings gained a full-workspace Backup/Restore section (single JSON of every `arclane.*` local-storage key, includes API keys, restore reloads the app).
+- Optional access gate added: `/api/access` (GET status/POST unlock), `app/api/_lib/access.ts`, `AccessGate` in the Studio layout, and cookie checks in all `/api/*` routes; inactive unless `ARCLANE_ACCESS_CODE` is set.
+- Removed from the repo (copies kept outside the project in `../ARCLANE-cleanup-backup/`): the `research/` niche-audit dataset and Python script (not part of the web app), the unused `stage-workspace.tsx` component, and the tracked `tsconfig.tsbuildinfo` build artifact (now gitignored). `PROJECT_MEMORY.md` is retained as project documentation and updated.
+- Full lint of every changed file reports no new issues; the pre-existing Ideas hydration-effect rule warnings are now handled with the same scoped disable comments used by Research.
 

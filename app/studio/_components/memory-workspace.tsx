@@ -123,6 +123,7 @@ export default function MemoryWorkspace() {
   const [deleteTarget, setDeleteTarget] = useState<SavedIdea | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- this effect hydrates the browser-local memory after mount */
   useEffect(() => {
     const refresh = () => {
       const savedWorkflow = readJson<WorkflowState>(workflowStorageKey, initialWorkflow);
@@ -140,8 +141,9 @@ export default function MemoryWorkspace() {
     window.addEventListener('storage', refresh);
     return () => window.removeEventListener('storage', refresh);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
-  const savedIdeas = workflow.savedIdeas ?? [];
+  const savedIdeas = useMemo(() => workflow.savedIdeas ?? [], [workflow.savedIdeas]);
   const usedCount = savedIdeas.filter((item) => item.status === 'used').length;
   const filteredIdeas = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -219,7 +221,7 @@ export default function MemoryWorkspace() {
     }
   }
 
-  function useIdea(saved: SavedIdea) {
+  function applyIdea(saved: SavedIdea) {
     const batches = workflow.ideaBatches ?? [];
     const sourceBatch = batches.find((batch) => batch.id === saved.idea.batchId);
     const now = new Date().toISOString();
@@ -386,7 +388,7 @@ export default function MemoryWorkspace() {
                         <footer>
                           <button type="button" onClick={() => toggleStatus(saved)}>{saved.status === 'used' ? 'Move to reserved' : 'Mark video made'}</button>
                           <button type="button" onClick={() => void copyIdea(saved)}>{copiedKey === saved.key ? '✓ Copied' : '⧉ Copy'}</button>
-                          <button className="primary" type="button" onClick={() => useIdea(saved)}>Use in Ideas →</button>
+                          <button className="primary" type="button" onClick={() => applyIdea(saved)}>Use in Ideas →</button>
                           <button className="remove" type="button" onClick={() => setDeleteTarget(saved)}>Delete</button>
                         </footer>
                       </article>

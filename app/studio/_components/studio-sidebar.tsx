@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import type { StudioStage } from '../_lib/stages';
 import { studioStages } from '../_lib/stages';
@@ -18,10 +19,10 @@ export default function StudioSidebar({ activeStageId, memoryActive = false, set
   return (
     <>
       <aside className="module-rail">
-        <a className="module-brand" href="/" aria-label="Back to Arclane homepage">
+        <Link className="module-brand" href="/" aria-label="Back to Arclane homepage">
           <span>A</span>
           <div><strong>ARCLANE</strong><small>Creator Studio</small></div>
-        </a>
+        </Link>
 
         <a
           className="module-overview-link"

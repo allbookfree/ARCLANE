@@ -5,6 +5,7 @@ import {
   type AutomationStage,
   type WorkflowContext,
 } from './prompts';
+import { accessGateResponse } from '../../_lib/access';
 
 type ProviderId = 'openai' | 'anthropic' | 'gemini' | 'custom';
 type AuthMethod = 'bearer' | 'api-key';
@@ -24,7 +25,13 @@ type GenerateRequest = {
 type Source = { title: string; url: string };
 type ProviderResult = { output: string; sources: Source[]; grounded: boolean; attempts?: number };
 type ProviderFetchResult = { payload: unknown; attempts: number };
-type ProviderRequestProfile = { timeoutMs: number; maxAttempts: number; taskLabel: string };
+type ProviderRequestProfile = { timeoutMs: number; maxAttempts: number; totalBudgetMs: number; taskLabel: string };
+
+// The whole provider call chain (every attempt plus every retry wait) must
+// finish inside this budget so a graceful error always reaches the browser
+// before the hosting platform (Vercel, 300s on every plan) kills the function.
+const TOTAL_PROVIDER_BUDGET_MS = 280000;
+const MIN_ATTEMPT_HEADROOM_MS = 15000;
 
 class ProviderRequestError extends Error {
   status: number;
@@ -131,38 +138,47 @@ function providerRequestProfile(stage: AutomationStage): ProviderRequestProfile 
     // Visual planning is the largest Studio request. Gemini documents 503 as a
     // transient capacity error and recommends a small number of exponential
     // retries with jitter.
-    return { timeoutMs: 360000, maxAttempts: 4, taskLabel: labels[stage] };
+    return { timeoutMs: 360000, maxAttempts: 4, totalBudgetMs: TOTAL_PROVIDER_BUDGET_MS, taskLabel: labels[stage] };
   }
   if (stage === 'scripts' || stage === 'script_review' || stage === 'script_translate') {
-    return { timeoutMs: 360000, maxAttempts: 2, taskLabel: labels[stage] };
+    return { timeoutMs: 360000, maxAttempts: 2, totalBudgetMs: TOTAL_PROVIDER_BUDGET_MS, taskLabel: labels[stage] };
   }
   if (stage === 'research' || stage === 'voiceover') {
-    return { timeoutMs: 300000, maxAttempts: 2, taskLabel: labels[stage] };
+    return { timeoutMs: 300000, maxAttempts: 2, totalBudgetMs: TOTAL_PROVIDER_BUDGET_MS, taskLabel: labels[stage] };
   }
   if (stage === 'shorts') {
-    return { timeoutMs: 300000, maxAttempts: 3, taskLabel: labels[stage] };
+    return { timeoutMs: 300000, maxAttempts: 3, totalBudgetMs: TOTAL_PROVIDER_BUDGET_MS, taskLabel: labels[stage] };
   }
-  return { timeoutMs: 180000, maxAttempts: 3, taskLabel: labels[stage] };
+  return { timeoutMs: 180000, maxAttempts: 3, totalBudgetMs: TOTAL_PROVIDER_BUDGET_MS, taskLabel: labels[stage] };
 }
 
 async function providerFetch(url: string, init: RequestInit, providerName: string, profile: ProviderRequestProfile): Promise<ProviderFetchResult> {
-  const { timeoutMs, maxAttempts, taskLabel } = profile;
+  const { timeoutMs, maxAttempts, totalBudgetMs, taskLabel } = profile;
+  const deadline = Date.now() + totalBudgetMs;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const remaining = deadline - Date.now();
+    if (remaining < MIN_ATTEMPT_HEADROOM_MS) {
+      throw new ProviderRequestError(
+        `${providerName} did not finish ${taskLabel} within the safe ${Math.round(totalBudgetMs / 60000)}-minute window, so the request was stopped before the host could cut it off. No saved work was replaced. Retry once; if this repeats, choose a faster compatible model.`,
+        504, Math.max(1, attempt - 1),
+      );
+    }
     let response: Response;
     try {
       response = await fetch(url, {
         ...init,
         redirect: 'manual',
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.timeout(Math.min(timeoutMs, remaining)),
       });
     } catch (fetchError) {
       const timedOut = fetchError instanceof Error && (fetchError.name === 'TimeoutError' || fetchError.name === 'AbortError');
-      if (!timedOut && attempt < maxAttempts) {
+      const outOfTime = deadline - Date.now() < MIN_ATTEMPT_HEADROOM_MS;
+      if (!timedOut && !outOfTime && attempt < maxAttempts) {
         await waitFor(700 * (2 ** (attempt - 1)) + Math.floor(Math.random() * 350));
         continue;
       }
       throw new ProviderRequestError(
-        timedOut ? `${providerName} did not finish ${taskLabel} within ${Math.round(timeoutMs / 60000)} minutes. No saved work was replaced. Retry once; if this repeats, choose a faster compatible model.`
+        timedOut ? `${providerName} did not finish ${taskLabel} within ${Math.max(1, Math.round(Math.min(timeoutMs, remaining) / 60000))} minutes. No saved work was replaced. Retry once; if this repeats, choose a faster compatible model.`
           : `${providerName} could not be reached after ${attempt} attempt${attempt === 1 ? '' : 's'}. Check the connection and try again.`,
         timedOut ? 504 : 502, attempt,
       );
@@ -183,7 +199,7 @@ async function providerFetch(url: string, init: RequestInit, providerName: strin
       const baseDelay = [500, 502, 503, 504, 529].includes(status) ? 2000 : 1200;
       const fallbackDelay = baseDelay * (2 ** (attempt - 1)) + Math.floor(Math.random() * 700);
       const waitMilliseconds = retryAfter !== undefined ? retryAfter * 1000 + Math.floor(Math.random() * 350) : fallbackDelay;
-      if (waitMilliseconds <= 60000) {
+      if (waitMilliseconds <= 60000 && waitMilliseconds + MIN_ATTEMPT_HEADROOM_MS < deadline - Date.now()) {
         await waitFor(waitMilliseconds);
         continue;
       }
@@ -500,6 +516,8 @@ async function generateCustom(body: GenerateRequest, prompt: string, maxTokens: 
 }
 
 export async function POST(request: Request) {
+  const denied = await accessGateResponse(request);
+  if (denied) return denied;
   try {
     const body = await request.json() as GenerateRequest;
     const provider = body.provider;

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { defaultChannels } from '../_lib/channels';
 import { studioNavigate } from '../_lib/navigation';
 
@@ -7,15 +8,15 @@ export default function StudioOverview() {
   return (
     <main className="studio-hub">
       <header className="studio-hub-header">
-        <a className="studio-hub-brand" href="/">
+        <Link className="studio-hub-brand" href="/">
           <span>A</span>
           <strong>ARCLANE</strong>
           <i>/</i>
           <small>Studio</small>
-        </a>
-        <a className="studio-hub-back" href="/">
+        </Link>
+        <Link className="studio-hub-back" href="/">
           Website ↗
-        </a>
+        </Link>
       </header>
 
       <div className="studio-hub-container">

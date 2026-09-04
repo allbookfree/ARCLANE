@@ -1,3 +1,5 @@
+import { accessGateResponse } from '../../_lib/access';
+
 type ProviderId = 'openai' | 'anthropic' | 'gemini' | 'custom';
 type AuthMethod = 'bearer' | 'api-key';
 
@@ -108,6 +110,8 @@ function providerError(providerName: string, status: number, authenticationFailu
 }
 
 export async function POST(request: Request) {
+  const denied = await accessGateResponse(request);
+  if (denied) return denied;
   try {
     const body = await request.json() as ModelsRequest;
     const provider = body.provider;

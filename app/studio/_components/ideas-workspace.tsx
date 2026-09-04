@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { jsonrepair } from 'jsonrepair';
 import { type StudioStageId } from '../_lib/stages';
 import { studioNavigate } from '../_lib/navigation';
 import StudioSidebar from './studio-sidebar';
@@ -150,7 +151,15 @@ function parseIdeas(content: string) {
     const unfenced = content.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/i, '').trim();
     const start = unfenced.indexOf('{');
     const end = unfenced.lastIndexOf('}');
-    const parsed = JSON.parse(start >= 0 && end > start ? unfenced.slice(start, end + 1) : unfenced) as unknown;
+    const candidate = start >= 0 && end > start ? unfenced.slice(start, end + 1) : unfenced;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(candidate) as unknown;
+    } catch {
+      // Models occasionally emit near-JSON (trailing commas, unquoted keys).
+      // Repair before giving up so one formatting slip cannot erase a batch.
+      parsed = JSON.parse(jsonrepair(candidate)) as unknown;
+    }
     const list = Array.isArray(parsed)
       ? parsed
       : parsed && typeof parsed === 'object' && Array.isArray((parsed as { ideas?: unknown }).ideas)
@@ -207,6 +216,17 @@ export default function IdeasWorkspace() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const requestInFlight = useRef(false);
   const autoRunHandled = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!loading) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   const batches = useMemo(() => {
     if (workflow.ideaBatches?.length) return workflow.ideaBatches;
@@ -240,6 +260,7 @@ export default function IdeasWorkspace() {
     window.localStorage.setItem(modelPreferenceKey, JSON.stringify(preferences));
   }, []);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- these effects hydrate and reconcile the browser-local workspace after mount */
   useEffect(() => {
     const refresh = () => setConnections(readConnections());
     const savedWorkflow = readJson<WorkflowState>(workflowStorageKey, initialWorkflow);
@@ -284,6 +305,7 @@ export default function IdeasWorkspace() {
       if (firstModel) savePreference(connection.providerId, firstModel.id);
     }
   }, [connections, modelId, providerId, savePreference]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const generateIdeas = useCallback(async (directionOverride?: string) => {
     if (requestInFlight.current) {
@@ -297,6 +319,8 @@ export default function IdeasWorkspace() {
       return;
     }
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     requestInFlight.current = true;
     setLoading(true);
     setError('');
@@ -322,6 +346,7 @@ export default function IdeasWorkspace() {
       const response = await fetch('/api/automation/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           stage: 'ideas',
           provider: connection.providerId,
@@ -340,17 +365,20 @@ export default function IdeasWorkspace() {
       if (!response.ok || !result.output) throw new Error(result.error || 'The model did not return usable ideas.');
       const parsedIdeas = parseIdeas(result.output);
       const remembered = new Set((workflow.savedIdeas ?? []).map((item) => ideaFingerprint(item.idea)));
-      const repeatedMemoryIdea = parsedIdeas.find((idea) => remembered.has(ideaFingerprint(idea)));
-      if (repeatedMemoryIdea) {
-        throw new Error(`The model repeated “${repeatedMemoryIdea.title}” from Idea Memory. Generate again so the library remains duplicate-safe.`);
-      }
-      if (parsedIdeas.length !== 8) {
-        throw new Error(`The model returned ${parsedIdeas.length || 'no'} usable ideas instead of eight. Regenerate with this or another model.`);
+      const duplicates = parsedIdeas.filter((idea) => remembered.has(ideaFingerprint(idea))).length;
+      // A repeated memory idea is removed instead of failing the batch, and a
+      // slightly short batch is shown rather than discarded, so one imperfect
+      // model response can no longer erase otherwise usable ideas.
+      const uniqueIdeas = parsedIdeas.filter((idea) => !remembered.has(ideaFingerprint(idea)));
+      if (uniqueIdeas.length < 6) {
+        throw new Error(duplicates
+          ? `The model returned ${parsedIdeas.length} idea${parsedIdeas.length === 1 ? '' : 's'} but ${duplicates} of ${duplicates === 1 ? 'it is' : 'them are'} already in Idea Memory, leaving only ${uniqueIdeas.length} new. Nothing was saved; generate again so the library stays duplicate-safe.`
+          : `The model returned ${parsedIdeas.length || 'no'} usable ideas instead of a complete set. Nothing was saved; regenerate with this or another model.`);
       }
 
       const now = new Date().toISOString();
       const batchId = `batch-${Date.now()}`;
-      const ideas = parsedIdeas.map((idea) => ({ ...idea, batchId }));
+      const ideas = uniqueIdeas.map((idea) => ({ ...idea, batchId }));
       const batch: IdeaBatch = {
         id: batchId,
         ideas,
@@ -379,16 +407,26 @@ export default function IdeasWorkspace() {
       if (persistWorkflow(next)) {
         setSelectedBatchId(batchId);
         const providerCalls = result.attempts ?? 1;
-        setNotice(`Eight new ideas created with ${connection.providerName} · ${model.name}${webSearchEnabled ? ' · live search on' : ' · knowledge-only'} · ${providerCalls} provider call${providerCalls === 1 ? '' : 's'}. Choose one when you are ready.`);
+        const countNote = uniqueIdeas.length === 8
+          ? 'Eight new ideas created'
+          : `${uniqueIdeas.length} usable ideas saved (the model returned fewer than eight)`;
+        const duplicateNote = duplicates ? ` ${duplicates} duplicate${duplicates === 1 ? '' : 's'} from Idea Memory ${duplicates === 1 ? 'was' : 'were'} removed.` : '';
+        setNotice(`${countNote} with ${connection.providerName} · ${model.name}${webSearchEnabled ? ' · live search on' : ' · knowledge-only'} · ${providerCalls} provider call${providerCalls === 1 ? '' : 's'}.${duplicateNote} Choose one when you are ready.`);
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Idea generation failed. Please try again.');
+      if (requestError instanceof Error && requestError.name === 'AbortError') {
+        setNotice('Request cancelled. Nothing was changed and your previous work is safe.');
+      } else {
+        setError(requestError instanceof Error ? requestError.message : 'Idea generation failed. Please try again.');
+      }
     } finally {
+      abortControllerRef.current = null;
       requestInFlight.current = false;
       setLoading(false);
     }
   }, [batches, connections, direction, era, focus, mix, modelId, persistWorkflow, providerId, region, webSearchEnabled, workflow]);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- the run=1 handoff intentionally starts one queued discovery run after mount */
   useEffect(() => {
     if (!hydrated || loading || autoRunHandled.current) return;
     const params = new URLSearchParams(window.location.search);
@@ -399,6 +437,7 @@ export default function IdeasWorkspace() {
     window.history.replaceState({}, '', cleanUrl);
     if (activeConnection && activeModel) void generateIdeas();
   }, [activeConnection, activeModel, generateIdeas, hydrated, loading]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   function changeProvider(nextProviderId: ProviderId) {
     const connection = connections.find((item) => item.providerId === nextProviderId);
@@ -419,6 +458,10 @@ export default function IdeasWorkspace() {
     } catch {
       setError('This browser could not save the live-search preference.');
     }
+  }
+
+  function cancelGeneration() {
+    abortControllerRef.current?.abort();
   }
 
   function selectIdea(idea: Idea, batch = activeBatch) {
@@ -447,12 +490,12 @@ export default function IdeasWorkspace() {
     }
   }
 
-  function savedKey(idea: Idea, _batchId?: string) {
+  function savedKey(idea: Idea) {
     return ideaFingerprint(idea);
   }
 
   function toggleSaved(idea: Idea, batchId = activeBatch?.id) {
-    const key = savedKey(idea, batchId);
+    const key = savedKey(idea);
     const saved = workflow.savedIdeas ?? [];
     const exists = saved.some((item) => item.key === key);
     const nextSaved = exists
@@ -476,7 +519,7 @@ export default function IdeasWorkspace() {
   }
 
   async function copyIdea(idea: Idea) {
-    const key = savedKey(idea, activeBatch?.id);
+    const key = savedKey(idea);
     const text = [
       idea.title,
       idea.premise,
@@ -696,7 +739,7 @@ export default function IdeasWorkspace() {
             {error ? <p className="idea-pro-message error" role="alert"><span>!</span>{error}</p> : null}
             {notice ? <p className="idea-pro-message success" role="status"><span>✓</span>{notice}</p> : null}
 
-            <footer><div><strong>How quality is protected</strong><span>One job at a time · safe retry only for temporary 429/5xx · compact context · {webSearchEnabled ? 'live web screening' : 'knowledge-only'}</span></div><button type="button" disabled={!activeModel || loading} onClick={() => void generateIdeas()}>{loading ? <><i className="automation-spinner" /> Screening candidates…</> : <>{activeIdeas.length ? 'Generate a new batch' : 'Generate eight ideas'} <b>→</b></>}</button></footer>
+            <footer><div><strong>How quality is protected</strong><span>One job at a time · safe retry only for temporary 429/5xx · compact context · {webSearchEnabled ? 'live web screening' : 'knowledge-only'}</span></div><div className="idea-pro-footer-actions">{loading ? <button type="button" className="idea-pro-cancel" onClick={cancelGeneration}>Cancel · {elapsedSeconds}s</button> : null}<button type="button" disabled={!activeModel || loading} onClick={() => void generateIdeas()}>{loading ? <><i className="automation-spinner" /> Screening candidates… {elapsedSeconds}s</> : <>{activeIdeas.length ? 'Generate a new batch' : 'Generate eight ideas'} <b>→</b></>}</button></div></footer>
           </section>
 
           {activeIdeas.length ? (
@@ -709,7 +752,7 @@ export default function IdeasWorkspace() {
               <div className="idea-pro-grid">
                 {activeIdeas.map((idea, index) => {
                   const selected = currentSelection?.id === idea.id;
-                  const ideaKey = savedKey(idea, activeBatch?.id);
+                  const ideaKey = savedKey(idea);
                   const saved = savedIdeas.some((item) => item.key === ideaKey);
                   const copied = copiedIdeaKey === ideaKey;
                   return (

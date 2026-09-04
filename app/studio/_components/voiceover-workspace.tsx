@@ -132,7 +132,6 @@ function minimumAdvancedCues(sourceWordCount: number) {
   return Math.max(2, Math.min(10, Math.floor(sourceWordCount / 250)));
 }
 export default function VoiceoverWorkspace() {
-  const [hydrated, setHydrated] = useState(false);
   const [connections, setConnections] = useState<Selection[]>([]);
   const [workflow, setWorkflow] = useState<WorkflowState>(initialWorkflow);
   const [providerId, setProviderId] = useState<ProviderId | ''>('');
@@ -197,7 +196,6 @@ export default function VoiceoverWorkspace() {
       setProviderId(firstConnection?.providerId ?? '');
       setModelId(firstModel?.id ?? '');
       setProfile(savedWorkflow.stages.voiceover?.voiceProfile === 'advanced' ? 'advanced' : 'universal');
-      setHydrated(true);
 
       const params = new URLSearchParams(window.location.search);
       if (params.has('run')) {

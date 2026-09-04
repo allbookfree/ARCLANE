@@ -109,6 +109,25 @@
 .research-lab > footer button { min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 18px; padding: 0 19px; border: 0; border-radius: 11px; background: var(--research-violet); color: #fff; font: inherit; font-size: 11px; font-weight: 850; cursor: pointer; box-shadow: 0 10px 24px rgba(108,70,232,.2); }
 .research-lab > footer button:hover:not(:disabled) { background: var(--research-violet-deep); transform: translateY(-1px); }
 .research-lab > footer button:disabled { cursor: not-allowed; opacity: .45; box-shadow: none; }
+.research-lab > footer .research-footer-actions { display: flex; align-items: center; gap: 10px; }
+.research-lab > footer .research-cancel {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  border: 1px solid var(--research-line);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--research-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: none;
+}
+.research-lab > footer .research-cancel:hover:not(:disabled) { background: #f3f5f9; color: var(--research-violet-deep); transform: none; }
 
 .research-empty { min-height: 360px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 54px 28px; text-align: center; }
 .research-empty > div { width: 70px; height: 70px; display: grid; place-items: center; border-radius: 21px; background: var(--research-pale); color: var(--research-violet); font-size: 29px; box-shadow: 0 14px 32px rgba(108,70,232,.11); }

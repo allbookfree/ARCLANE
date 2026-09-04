@@ -664,7 +664,6 @@ function sourceHints(asset: VisualAsset) {
 }
 
 export default function VisualsWorkspace() {
-  const [hydrated, setHydrated] = useState(false);
   const [connections, setConnections] = useState<Selection[]>([]);
   const [workflow, setWorkflow] = useState<WorkflowState>(initialWorkflow);
   const [providerId, setProviderId] = useState<ProviderId | ''>('');
@@ -787,7 +786,6 @@ export default function VisualsWorkspace() {
     setModestyMode(savedModestyMode);
     setProviderId(firstConnection?.providerId ?? '');
     setModelId(firstModel?.id ?? '');
-    setHydrated(true);
     window.addEventListener('storage', refreshConnections);
     window.addEventListener(connectionChangeEvent, refreshConnections);
     return () => {

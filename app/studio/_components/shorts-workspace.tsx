@@ -181,7 +181,6 @@ function visualLabel(type: VisualType) { return type === 'ai_still_motion' ? 'AI
 function sourceLabel(source: AudioSource) { return source === 'youtube_audio_library' ? 'YouTube Audio Library' : source === 'pixabay' ? 'Pixabay' : 'No asset needed'; }
 
 export default function ShortsWorkspace() {
-  const [hydrated, setHydrated] = useState(false);
   const [connections, setConnections] = useState<Selection[]>([]);
   const [workflow, setWorkflow] = useState<WorkflowState>(initialWorkflow);
   const [providerId, setProviderId] = useState<ProviderId | ''>('');
@@ -231,7 +230,6 @@ export default function ShortsWorkspace() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setConnections(available); setWorkflow(savedWorkflow); setProviderId(connection?.providerId ?? ''); setModelId(model?.id ?? '');
     setLengthMode(savedLength && savedLength in lengthProfiles ? savedLength : 'auto');
-    setHydrated(true);
     window.addEventListener('storage', refresh); window.addEventListener(connectionChangeEvent, refresh);
     return () => { window.removeEventListener('storage', refresh); window.removeEventListener(connectionChangeEvent, refresh); };
   }, []);
