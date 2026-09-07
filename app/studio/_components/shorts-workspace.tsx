@@ -1,8 +1,9 @@
-'use client';
+﻿'use client';
 
 import { jsonrepair } from 'jsonrepair';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { studioNavigate } from '../_lib/navigation';
+import { friendlyFetchError } from '../_lib/errors';
 import { getSpokenScriptText } from './script-document-view';
 import StudioSidebar from './studio-sidebar';
 
@@ -38,6 +39,7 @@ type ShortPackage = {
   story: { hook: string; payoff: string; fullVideoBridge: string };
   timeline: ShortClip[];
   audioZones: AudioZone[];
+  warnings: string[];
 };
 type ShortsWorkspaceData = { version: 'ARCLANE_SHORTS_WORKSPACE_2026_08_V2'; slots: [ShortPackage | null, ShortPackage | null, ShortPackage | null] };
 type DescriptionHandoff = { title: string; description: string };
@@ -104,58 +106,139 @@ function parseShortPackage(value: unknown, expectedSlot: ShortSlot, previous: Sh
   const settings = parseSettings(root.settings);
   if (expected && JSON.stringify(settings) !== JSON.stringify(expected)) throw new Error('The AI did not follow the selected Short settings. Nothing was replaced.');
 
+  const warnings: string[] = [];
   const angleKey = stringValue(root.angleKey); const angle = stringValue(root.angle); const differenceFromEarlier = stringValue(root.differenceFromEarlier);
   const durationSeconds = Math.round(numberValue(root.durationSeconds)); const profile = lengthProfiles[settings.lengthMode];
-  const uploadRaw = asRecord(root.upload); const upload = { title: stringValue(uploadRaw.title).replace(/\s+/g, ' '), description: stringValue(uploadRaw.description) };
-  const coverRaw = asRecord(root.cover); const cover = { headline: stringValue(coverRaw.headline).replace(/\s+/g, ' '), prompt: stringValue(coverRaw.prompt) };
+  const uploadRaw = asRecord(root.upload); let uploadTitle = stringValue(uploadRaw.title).replace(/\s+/g, ' '); let uploadDescription = stringValue(uploadRaw.description);
+  const coverRaw = asRecord(root.cover); const coverHeadline = stringValue(coverRaw.headline).replace(/\s+/g, ' '); const coverPrompt = stringValue(coverRaw.prompt);
   const storyRaw = asRecord(root.story); const story = { hook: stringValue(storyRaw.hook), payoff: stringValue(storyRaw.payoff), fullVideoBridge: stringValue(storyRaw.fullVideoBridge) };
-  if (!angleKey || !angle || !differenceFromEarlier || !Number.isFinite(durationSeconds) || durationSeconds < profile.min || durationSeconds > profile.max) throw new Error(`Short ${expectedSlot} did not contain a complete natural-length story. Nothing was replaced.`);
-  if (!upload.title || upload.title.length > 100 || !upload.description || upload.description.length > 500 || !story.hook || !story.payoff || !story.fullVideoBridge) throw new Error(`Short ${expectedSlot} upload or story details were incomplete. Nothing was replaced.`);
-  const coverWords = cover.headline.split(/\s+/).filter(Boolean).length;
-  if (!cover.headline || coverWords > 5 || cover.headline.length > 32 || cover.prompt.length < 140 || !/9\s*:\s*16/.test(cover.prompt) || normalizeWords(cover.headline) === normalizeWords(upload.title) || !normalizeWords(cover.prompt).includes(normalizeWords(cover.headline))) throw new Error(`Short ${expectedSlot} cover was not a complete and distinct 9:16 thumbnail plan. Nothing was replaced.`);
-  const modestCover = { ...cover, prompt: withSafeguard(cover.prompt) };
+  // Only an actually empty core is a dead end. Length preferences and platform
+  // caps are repaired or reported, never a reason to discard finished work.
+  if (!angleKey || !angle || !differenceFromEarlier || !Number.isFinite(durationSeconds) || !uploadTitle || !uploadDescription || !story.hook || !story.payoff || !story.fullVideoBridge) {
+    throw new Error(`Short ${expectedSlot} did not return a complete story, upload or duration. Your saved work is unchanged; build it again or choose another model.`);
+  }
+  if (uploadTitle.length > 100) { uploadTitle = uploadTitle.slice(0, 100).trim(); warnings.push(`Short ${expectedSlot} title exceeded 100 characters and was trimmed.`); }
+  if (uploadDescription.length > 500) { uploadDescription = uploadDescription.slice(0, 500).trim(); warnings.push(`Short ${expectedSlot} description exceeded 500 characters and was trimmed.`); }
+  if (durationSeconds < profile.min || durationSeconds > profile.max) warnings.push(`Short ${expectedSlot} duration (${durationSeconds}s) is outside the selected ${profile.label} range; confirm it before production.`);
+  const upload = { title: uploadTitle, description: uploadDescription };
+
+  if (!coverHeadline || !coverPrompt) throw new Error(`Short ${expectedSlot} returned no usable 9:16 cover plan. Your saved work is unchanged; build it again or choose another model.`);
+  const coverWords = coverHeadline.split(/\s+/).filter(Boolean).length;
+  if (coverWords > 5 || coverHeadline.length > 32) warnings.push(`Short ${expectedSlot} cover text is longer than the five-word / 32-character standard (${coverWords} words).`);
+  if (coverPrompt.length < 140) warnings.push(`Short ${expectedSlot} cover prompt is under the 140-character production minimum (${coverPrompt.length}).`);
+  if (!/9\s*:\s*16/.test(coverPrompt)) warnings.push(`Short ${expectedSlot} cover prompt does not state the 9:16 frame; confirm it before generating.`);
+  if (normalizeWords(coverHeadline) === normalizeWords(uploadTitle)) warnings.push(`Short ${expectedSlot} cover text repeats the upload title; the frame and the title should complement rather than duplicate.`);
+  if (!normalizeWords(coverPrompt).includes(normalizeWords(coverHeadline))) warnings.push(`Short ${expectedSlot} cover prompt does not repeat the exact cover text, so the text may be missing from the generated image.`);
+  const modestCover = { headline: coverHeadline, prompt: withSafeguard(coverPrompt) };
   for (const earlier of previous) {
-    const repeated = normalizeWords(earlier.angleKey) === normalizeWords(angleKey) || wordSimilarity(`${earlier.angle} ${earlier.story.payoff}`, `${angle} ${story.payoff}`) > .9 || normalizeWords(earlier.upload.title) === normalizeWords(upload.title);
-    if (repeated) throw new Error(`Short ${expectedSlot} repeated an earlier angle. Nothing was replaced; build it again for a genuinely different story.`);
+    const repeated = normalizeWords(earlier.angleKey) === normalizeWords(angleKey) || wordSimilarity(`${earlier.angle} ${earlier.story.payoff}`, `${angle} ${story.payoff}`) > .9 || normalizeWords(earlier.upload.title) === normalizeWords(uploadTitle);
+    if (repeated) warnings.push(`Short ${expectedSlot} is very similar to earlier Short ${earlier.slot}. Rebuild it only if you want a genuinely different story.`);
   }
 
   const rawTimeline = Array.isArray(root.timeline) ? root.timeline : [];
-  if (rawTimeline.length < 4 || rawTimeline.length > 45) throw new Error(`Short ${expectedSlot} returned an incomplete visual timeline. Nothing was replaced.`);
-  const timeline = rawTimeline.map((value, index): ShortClip => {
+  if (rawTimeline.length < 4) throw new Error(`Short ${expectedSlot} returned an incomplete visual timeline (${rawTimeline.length} shots). Your saved work is unchanged; build it again or choose another model.`);
+  const boundedTimeline = rawTimeline.length > 45 ? rawTimeline.slice(0, 45) : rawTimeline;
+  if (boundedTimeline.length < rawTimeline.length) warnings.push(`Short ${expectedSlot} returned more than 45 visual shots; only the first 45 were kept.`);
+  let timelineCursor = 0;
+  const timeline = boundedTimeline.map((value, index): ShortClip => {
     const item = asRecord(value); const startSeconds = Math.round(numberValue(item.startSeconds)); const endSeconds = Math.round(numberValue(item.endSeconds));
     const visual = stringValue(item.visualType) as VisualType;
     const clip: ShortClip = { id: `SHOT-${String(index + 1).padStart(2, '0')}`, startSeconds, endSeconds, spokenText: stringValue(item.spokenText), onScreenText: stringValue(item.onScreenText), visualType: visualTypes.has(visual) ? visual : 'ai_video', visualPrompt: withSafeguard(stringValue(item.visualPrompt)), sfxSearch: stringValue(item.sfxSearch) };
-    const expectedStart = index ? Math.round(numberValue(asRecord(rawTimeline[index - 1]).endSeconds)) : 0;
-    if (startSeconds !== expectedStart || endSeconds <= startSeconds || endSeconds - startSeconds > 12 || !clip.spokenText || clip.visualPrompt.length < 90 || clip.onScreenText.length > 70) throw new Error(`Short ${expectedSlot} shot ${index + 1} was incomplete or mistimed. Nothing was replaced.`);
+    const expectedStart = timelineCursor;
+    if (!clip.spokenText) throw new Error(`Short ${expectedSlot} shot ${index + 1} is missing its spoken text, so the Voiceover cannot be built. Your saved work is unchanged; build it again or choose another model.`);
+    // Repair instead of reject: one mistimed or oversized shot is fitted to the
+    // continuous timeline so the whole Short can still be produced and reviewed.
+    if (clip.startSeconds !== expectedStart) {
+      clip.startSeconds = expectedStart;
+      warnings.push(`Short ${expectedSlot} shot ${index + 1} started at the wrong moment and was moved to follow the previous shot.`);
+    }
+    const wantedEnd = Number.isFinite(endSeconds) ? endSeconds : clip.startSeconds + 2;
+    const fittedEnd = Math.round(Math.min(durationSeconds, Math.max(wantedEnd, clip.startSeconds + 1)));
+    if (fittedEnd !== clip.endSeconds || endSeconds <= startSeconds || !Number.isFinite(endSeconds)) {
+      clip.endSeconds = fittedEnd;
+      warnings.push(`Short ${expectedSlot} shot ${index + 1} had an invalid end time and was fitted to the timeline.`);
+    }
+    if (clip.endSeconds - clip.startSeconds > 12) warnings.push(`Short ${expectedSlot} shot ${index + 1} is longer than the 12-second visual standard (${clip.endSeconds - clip.startSeconds}s); confirm it still reads as one shot.`);
+    if (clip.visualPrompt.length < 90) warnings.push(`Short ${expectedSlot} shot ${index + 1} visual prompt is under the 90-character production minimum.`);
+    if (clip.onScreenText.length > 70) warnings.push(`Short ${expectedSlot} shot ${index + 1} on-screen text exceeds 70 characters; it will be hard to read on phones.`);
+    timelineCursor = clip.endSeconds;
     return clip;
   });
-  if (timeline.at(-1)?.endSeconds !== durationSeconds) throw new Error(`Short ${expectedSlot} visuals did not cover the full duration. Nothing was replaced.`);
-  if (new Set(timeline.map((clip) => normalizeWords(clip.visualPrompt))).size !== timeline.length) throw new Error(`Short ${expectedSlot} repeated a visual shot. Nothing was replaced.`);
+  const lastTimelineShot = timeline.at(-1);
+  if (lastTimelineShot && lastTimelineShot.endSeconds !== durationSeconds) {
+    lastTimelineShot.endSeconds = durationSeconds;
+    warnings.push(`Short ${expectedSlot} visuals ended early and were extended to cover the full duration.`);
+  }
+  if (new Set(timeline.map((clip) => normalizeWords(clip.visualPrompt))).size !== timeline.length) warnings.push(`Short ${expectedSlot} repeats the same visual direction in more than one shot; produce genuinely different frames or accept the deliberate repeat.`);
   const voiceover = timeline.map((clip) => clip.spokenText.trim()).join(' ').replace(/\s+/g, ' ').trim();
   const wordsPerMinute = (voiceover.split(/\s+/).filter(Boolean).length * 60) / durationSeconds;
-  if (wordsPerMinute < 90 || wordsPerMinute > 210) throw new Error(`Short ${expectedSlot} narration did not fit its timeline naturally. Nothing was replaced.`);
-  if (!normalizeWords(voiceover).startsWith(normalizeWords(story.hook))) throw new Error(`Short ${expectedSlot} did not begin with its promised hook. Nothing was replaced.`);
-  if (!normalizeWords(voiceover).endsWith(normalizeWords(story.fullVideoBridge))) throw new Error(`Short ${expectedSlot} did not finish with its full-video bridge. Nothing was replaced.`);
-  if (/(?:https?:\/\/|www\.|#\w+)/i.test(upload.description)) throw new Error(`Short ${expectedSlot} description contained a link or hashtag. Nothing was replaced.`);
-  if (settings.audioMode === 'faith_safe' && timeline.some((clip) => faithUnsafeAudioPattern.test(clip.sfxSearch))) throw new Error(`Short ${expectedSlot} returned a non-faith-safe effect suggestion. Nothing was replaced.`);
+  if (wordsPerMinute < 90 || wordsPerMinute > 210) warnings.push(`Short ${expectedSlot} narration pace (${Math.round(wordsPerMinute)} words/min) is outside the natural 90–210 range; check the read-aloud feel.`);
+  if (!normalizeWords(voiceover).startsWith(normalizeWords(story.hook))) warnings.push(`Short ${expectedSlot} voiceover does not begin with its promised hook.`);
+  if (!normalizeWords(voiceover).endsWith(normalizeWords(story.fullVideoBridge))) warnings.push(`Short ${expectedSlot} voiceover does not finish with its full-video bridge.`);
+  if (/(?:https?:\/\/|www\.|#\w+)/i.test(upload.description)) warnings.push(`Short ${expectedSlot} description contains a link or hashtag; remove it before publishing.`);
+  if (settings.audioMode === 'faith_safe' && timeline.some((clip) => faithUnsafeAudioPattern.test(clip.sfxSearch))) warnings.push(`Short ${expectedSlot} suggests a musical sound effect while Faith-safe audio is on; replace that effect with ambience or silence before publishing.`);
 
   const rawAudio = Array.isArray(root.audioZones) ? root.audioZones : [];
-  if (!rawAudio.length || rawAudio.length > 10) throw new Error(`Short ${expectedSlot} returned no usable audio plan. Nothing was replaced.`);
-  const audioZones = rawAudio.map((value, index): AudioZone => {
+  if (!rawAudio.length) throw new Error(`Short ${expectedSlot} returned no usable audio plan. Your saved work is unchanged; build it again or choose another model.`);
+  const boundedAudio = rawAudio.length > 10 ? rawAudio.slice(0, 10) : rawAudio;
+  if (boundedAudio.length < rawAudio.length) warnings.push(`Short ${expectedSlot} returned more than 10 audio sections; only the first 10 were kept.`);
+  let audioTimelineCursor = 0;
+  const audioZones = boundedAudio.map((value, index): AudioZone => {
     const item = asRecord(value); const startSeconds = Math.round(numberValue(item.startSeconds)); const endSeconds = Math.round(numberValue(item.endSeconds));
     const rawType = stringValue(item.soundType) as SoundType; const rawSource = stringValue(item.source) as AudioSource;
-    const soundType = soundTypes.has(rawType) ? rawType : 'silence'; const source = audioSources.has(rawSource) ? rawSource : 'none';
+    const soundType = soundTypes.has(rawType) ? rawType : 'ambience'; const source = audioSources.has(rawSource) ? rawSource : 'none';
     const numericVolume = item.volumeDb === null ? Number.NaN : numberValue(item.volumeDb);
     const zone: AudioZone = { startSeconds, endSeconds, soundType, searchQuery: stringValue(item.searchQuery), source, volumeDb: Number.isFinite(numericVolume) ? numericVolume : null, fadeInSeconds: Math.max(0, Math.min(5, numberValue(item.fadeInSeconds) || 0)), fadeOutSeconds: Math.max(0, Math.min(5, numberValue(item.fadeOutSeconds) || 0)) };
-    const expectedStart = index ? Math.round(numberValue(asRecord(rawAudio[index - 1]).endSeconds)) : 0;
-    const invalidSilence = soundType === 'silence' && (source !== 'none' || Boolean(zone.searchQuery) || zone.volumeDb !== null);
-    const invalidSound = soundType !== 'silence' && (!zone.searchQuery || source === 'none' || zone.volumeDb === null || zone.volumeDb < -40 || zone.volumeDb > -10);
-    const invalidFaithSound = settings.audioMode === 'faith_safe' && (soundType === 'music' || faithUnsafeAudioPattern.test(zone.searchQuery));
-    if (startSeconds !== expectedStart || endSeconds <= startSeconds || invalidSilence || invalidSound || invalidFaithSound) throw new Error(`Short ${expectedSlot} audio section ${index + 1} failed the sound policy. Nothing was replaced.`);
+    const expectedStart = audioTimelineCursor;
+    const invalidSilence = zone.soundType === 'silence' && (zone.source !== 'none' || Boolean(zone.searchQuery) || zone.volumeDb !== null);
+    const invalidSound = zone.soundType !== 'silence' && (!zone.searchQuery || zone.source === 'none' || zone.volumeDb === null || zone.volumeDb < -40 || zone.volumeDb > -10);
+    const invalidFaithSound = settings.audioMode === 'faith_safe' && (zone.soundType === 'music' || faithUnsafeAudioPattern.test(zone.searchQuery));
+    // Repair instead of reject: timing is fitted to the continuous timeline and
+    // sound-policy mistakes are corrected or downgraded to silence, never used
+    // to erase an otherwise usable Short.
+    if (zone.startSeconds !== expectedStart) {
+      zone.startSeconds = expectedStart;
+      warnings.push(`Short ${expectedSlot} audio section ${index + 1} started at the wrong moment and was moved after the previous section.`);
+    }
+    if (!Number.isFinite(endSeconds) || endSeconds <= startSeconds || zone.endSeconds > durationSeconds) {
+      zone.endSeconds = Math.round(Math.min(durationSeconds, Math.max(Number.isFinite(endSeconds) ? endSeconds : zone.startSeconds + 2, zone.startSeconds + 1)));
+      warnings.push(`Short ${expectedSlot} audio section ${index + 1} had an invalid end time and was fitted to the timeline.`);
+    }
+    if (invalidSilence) {
+      zone.searchQuery = ''; zone.source = 'none'; zone.volumeDb = null;
+      warnings.push(`Short ${expectedSlot} audio section ${index + 1} mixed silence with sound settings; it was cleaned to pure silence.`);
+    } else if (invalidSound || invalidFaithSound) {
+      if (invalidFaithSound) {
+        zone.soundType = 'silence'; zone.searchQuery = ''; zone.source = 'none'; zone.volumeDb = null;
+        warnings.push(`Short ${expectedSlot} audio section ${index + 1} suggested a musical element while Faith-safe audio was on; it was replaced with silence.`);
+      } else {
+        const music = zone.soundType === 'music';
+        zone.source = music ? 'youtube_audio_library' : (zone.source === 'none' ? 'pixabay' : zone.source);
+        zone.searchQuery = zone.searchQuery || (music ? 'restrained documentary background music' : 'natural historical ambience sound effect');
+        zone.volumeDb = (zone.volumeDb === null || zone.volumeDb < -40 || zone.volumeDb > -10) ? (music ? -22 : -24) : zone.volumeDb;
+        warnings.push(`Short ${expectedSlot} audio section ${index + 1} was missing sound details; defaults were applied so the section stays usable.`);
+      }
+    }
+    audioTimelineCursor = zone.endSeconds;
     return zone;
   });
-  if (audioZones.at(-1)?.endSeconds !== durationSeconds) throw new Error(`Short ${expectedSlot} audio did not cover the full duration. Nothing was replaced.`);
-  return { version: packageVersion, slot: expectedSlot, settings, angleKey, angle, differenceFromEarlier, durationSeconds, upload, cover: modestCover, story, timeline, audioZones };
+  let audioCursor = 0;
+  audioZones.forEach((zone, index) => {
+    if (index === 0) {
+      if (zone.startSeconds > 0.1) { zone.startSeconds = 0; warnings.push(`Short ${expectedSlot} audio started after 0:00; the first section was extended to the start.`); }
+    } else if (Math.abs(zone.startSeconds - audioCursor) > 0.2) {
+      zone.startSeconds = audioCursor;
+      if (zone.endSeconds <= zone.startSeconds) zone.endSeconds = Math.round(Math.min(durationSeconds, zone.startSeconds + 2));
+      warnings.push(`Short ${expectedSlot} had a gap before audio section ${index + 1}; it was closed automatically.`);
+    }
+    audioCursor = zone.endSeconds;
+  });
+  const lastAudioZone = audioZones.at(-1);
+  if (lastAudioZone && lastAudioZone.endSeconds !== durationSeconds) {
+    lastAudioZone.endSeconds = durationSeconds;
+    warnings.push(`Short ${expectedSlot} audio ended early; the final section was extended to the full duration.`);
+  }
+  return { version: packageVersion, slot: expectedSlot, settings, angleKey, angle, differenceFromEarlier, durationSeconds, upload, cover: modestCover, story, timeline, audioZones, warnings };
 }
 function readShortWorkspace(record: StageRecord | undefined): ShortsWorkspaceData {
   if (!record?.content) return emptyWorkspace();
@@ -324,7 +407,12 @@ export default function ShortsWorkspace() {
         sourceIdeaId: selectedIdea.id, sourceScriptUpdatedAt: scriptRecord.updatedAt, sourceDescriptionUpdatedAt: descriptionRecord.updatedAt,
       };
       const fresh = readJson<WorkflowState>(workflowStorageKey, initialWorkflow);
-      if (persistWorkflow({ ...fresh, stages: { ...fresh.stages, shorts: record } })) setNotice(`Short ${activeSlot} is complete and independently publishable. You may stop here or optionally prepare another distinct Short.`);
+      if (persistWorkflow({ ...fresh, stages: { ...fresh.stages, shorts: record } })) {
+        const savedNote = `Short ${activeSlot} is complete and independently publishable. You may stop here or optionally prepare another distinct Short.`;
+        setNotice(nextPackage.warnings.length
+          ? `${savedNote} Review notes (${nextPackage.warnings.length}): ${nextPackage.warnings.slice(0, 3).join(' ')}${nextPackage.warnings.length > 3 ? ` +${nextPackage.warnings.length - 3} more below.` : ''}`
+          : savedNote);
+      }
     } catch (requestError) {
       if (requestError instanceof Error && requestError.name === 'AbortError') { setNotice(`Short ${activeSlot} request cancelled. Nothing was changed.`); setError(''); }
       else setError(requestError instanceof Error ? requestError.message : `Short ${activeSlot} could not be created. Your saved work is unchanged.`);
@@ -379,12 +467,13 @@ export default function ShortsWorkspace() {
           <div className="shorts-policy"><div><span>VISUAL POLICY</span><strong>Strict modesty · Always on</strong></div><div><span>AUDIO POLICY</span><strong>Faith-safe sound · Always on</strong></div><p>These two creator policies are permanently protected for every Short.</p></div>
           <details className="shorts-direction"><summary><span>Optional: special direction for Short {activeSlot}</span><small>Usually leave this closed</small></summary><textarea value={direction} onChange={(event) => setDirection(event.target.value)} placeholder="Example: Focus on the worker's final decision, but do not repeat Short 1." /></details>
           {error && <div className="shorts-message error"><span>!</span><p>{error}</p></div>}{notice && <div className="shorts-message success"><span>✓</span><p>{notice}</p></div>}
-          <footer><div><strong>{!handoffReady ? 'Final Description required' : !priorSlotReady ? `Short ${activeSlot - 1} must be completed first` : activePackage ? `Short ${activeSlot} is safely saved` : `Short ${activeSlot} is ready to build`}</strong><span>{lengthProfiles[lengthMode].detail} Existing work changes only after a complete result passes every check.</span></div><div className="shorts-footer-actions">{loading ? <button type="button" className="shorts-cancel" onClick={cancelBuild}>Cancel · {elapsedSeconds}s</button> : null}<button type="button" disabled={loading || !handoffReady || !priorSlotReady || !activeModel} onClick={() => void buildShort()}>{loading ? <><i className="shorts-spinner" /> Building one complete Short… {elapsedSeconds}s</> : <>{activePackage ? `Rebuild Short ${activeSlot}` : `Create Short ${activeSlot}`} <b>→</b></>}</button></div></footer>
+          <footer><div><strong>{!handoffReady ? 'Final Description required' : !priorSlotReady ? `Short ${activeSlot - 1} must be completed first` : activePackage ? `Short ${activeSlot} is safely saved` : `Short ${activeSlot} is ready to build`}</strong><span>{lengthProfiles[lengthMode].detail} Your saved Short changes only after a complete result passes structural checks; quality notes appear as review reminders.</span></div><div className="shorts-footer-actions">{loading ? <button type="button" className="shorts-cancel" onClick={cancelBuild}>Cancel · {elapsedSeconds}s</button> : null}<button type="button" disabled={loading || !handoffReady || !priorSlotReady || !activeModel} onClick={() => void buildShort()}>{loading ? <><i className="shorts-spinner" /> Building one complete Short… {elapsedSeconds}s</> : <>{activePackage ? `Rebuild Short ${activeSlot}` : `Create Short ${activeSlot}`} <b>→</b></>}</button></div></footer>
         </section>
 
         {shortsRecord && !workspaceCurrent && <div className="shorts-stale">The Final Script or Description changed. Earlier Shorts are preserved, but create fresh versions before publishing.</div>}
 
         {activePackage ? <>
+          {activePackage.warnings.length > 0 ? <div className="shorts-stale"><b>Review notes ({activePackage.warnings.length}) — check before publishing:</b> {activePackage.warnings.join(' ')}</div> : null}
           <section className="shorts-result"><header><div><p>SHORT {activeSlot} · COMPLETE PACKAGE</p><h2>{activePackage.upload.title}</h2><span>{activePackage.angle}</span></div><div><b>{formatTime(activePackage.durationSeconds)}</b><button type="button" onClick={downloadPackage}>Download backup</button></div></header><div className="shorts-result-grid"><article><span>First-second hook</span><p>{activePackage.story.hook}</p></article><article><span>Payoff</span><p>{activePackage.story.payoff}</p></article><article><span>Why it is different</span><p>{activePackage.differenceFromEarlier}</p></article><article><span>Full-video bridge</span><p>{activePackage.story.fullVideoBridge}</p></article></div></section>
 
           <section className="shorts-copy"><header><div><p>UPLOAD &amp; VOICEOVER</p><h2>Copy-ready essentials</h2></div><span>No links · no hashtag block · no copyrighted track name</span></header><div><article><span>SHORT TITLE</span><strong>{activePackage.upload.title}</strong><button type="button" disabled={!workspaceCurrent} onClick={() => copyText(activePackage.upload.title, `Short ${activeSlot} title copied.`)}>Copy title</button></article><article><span>SHORT DESCRIPTION</span><p>{activePackage.upload.description}</p><button type="button" disabled={!workspaceCurrent} onClick={() => copyText(activePackage.upload.description, `Short ${activeSlot} description copied.`)}>Copy description</button></article><article className="voiceover"><span>FULL VOICEOVER</span><p>{fullVoiceover}</p><button type="button" disabled={!workspaceCurrent} onClick={() => copyText(fullVoiceover, `Short ${activeSlot} voiceover copied.`)}>Copy voiceover</button></article></div></section>

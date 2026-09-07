@@ -1,8 +1,9 @@
-'use client';
+﻿﻿'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StudioStageId } from '../_lib/stages';
 import { studioNavigate } from '../_lib/navigation';
+import { friendlyFetchError } from '../_lib/errors';
 import ResearchDocumentView, { getResearchSignals, normalizeResearchMarkdown } from './research-document-view';
 import StudioSidebar from './studio-sidebar';
 
@@ -432,7 +433,7 @@ export default function ResearchWorkspace() {
         setNotice('Research cancelled. Nothing was changed; the previous version stays safe.');
         setError('');
       } else {
-        setError(requestError instanceof Error ? requestError.message : 'Research generation failed. Please try again.');
+        setError(friendlyFetchError(requestError, 'Research generation failed. Please try again.'));
         setNotice('');
       }
     } finally {
@@ -539,25 +540,6 @@ export default function ResearchWorkspace() {
       setError('Build the Research document before continuing to Script.');
       return;
     }
-    if (!researchReadyForScript) {
-      if (!automaticEvidenceMode) {
-        setError('This model cannot verify sources by itself. Connect Firecrawl in Settings or choose a search-capable AI provider.');
-        return;
-      }
-      await generateResearch({ evidenceMode: automaticEvidenceMode, continueWhenReady: true });
-      return;
-    }
-    if (!saveDraft(false)) return;
-    studioNavigate('/studio/scripts');
-  }
-
-  // Manual escape hatch for the automatic handoff gate: the creator—not the
-  // checker—decides when a blocked Research version may still move forward.
-  async function continueWithoutVerification() {
-    if (!draft.trim()) {
-      setError('Build the Research document before continuing to Script.');
-      return;
-    }
     if (!saveDraft(false)) return;
     studioNavigate('/studio/scripts');
   }
@@ -652,8 +634,7 @@ export default function ResearchWorkspace() {
 
               <section className={`research-handoff-gate${researchReadyForScript ? ' passed' : ' blocked'}`}>
                 <div className="research-handoff-gate-mark">{researchReadyForScript ? '✓' : '↻'}</div>
-                <div><p>Automatic Research check</p><h3>{researchReadyForScript ? 'Research is ready for Script' : 'One automatic verification pass is needed'}</h3><span>{researchReadyForScript ? 'The evidence structure and source trail passed automatically. The linked sources remain available whenever you want to inspect them.' : automaticEvidenceMode ? `You do not need to check technical scores. Use “${automaticRepairLabel}” below; the system will rebuild, replace this draft, check it and continue only if it is safe.` : 'Connect Firecrawl or choose a search-capable AI model. This draft stays safe and will not be sent to Script.'}</span>
-                  {!researchReadyForScript ? <button type="button" className="research-handoff-gate-override" disabled={loading} onClick={() => void continueWithoutVerification()}>Continue to Script without full verification →</button> : null}
+                <div><p>Automatic Research check</p><h3>{researchReadyForScript ? 'Research is ready for Script' : 'Research without verified sources'}</h3><span>{researchReadyForScript ? 'The evidence structure and source trail passed automatically. The linked sources remain available whenever you want to inspect them.' : 'This Research has no verified source trail. You can still continue to Script—just verify the claims yourself before production.'}</span>
                 </div>
               </section>
 
@@ -676,7 +657,7 @@ export default function ResearchWorkspace() {
           <footer className="research-next">
             <a href="/studio/ideas" onClick={(e) => studioNavigate('/studio/ideas', e)}><span>Previous stage</span><strong>← Ideas</strong></a>
             <div><span>Current production idea</span><strong>{selectedIdea?.title ?? 'Nothing selected'}</strong></div>
-            <button type="button" disabled={!activeRecord || loading} onClick={() => void continueToScript()}><span>{loading ? `Working automatically… ${elapsedSeconds}s` : researchReadyForScript ? 'Continue automatically' : automaticRepairLabel}</span><strong>Script <i>→</i></strong></button>
+            <button type="button" disabled={!activeRecord || loading} onClick={() => void continueToScript()}><span>{loading ? `Working automatically… ${elapsedSeconds}s` : researchReadyForScript ? 'Continue automatically' : 'Continue to Script'}</span><strong>Script <i>→</i></strong></button>
           </footer>
         </div>
       </section>

@@ -1,6 +1,6 @@
 # Arclane Creator Studio — Project Memory
 
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
 ## Purpose
 
@@ -128,4 +128,35 @@ On 2026-09-05, reliability hardening, workspace cleanup and structure cleanup pa
 - Optional access gate added: `/api/access` (GET status/POST unlock), `app/api/_lib/access.ts`, `AccessGate` in the Studio layout, and cookie checks in all `/api/*` routes; inactive unless `ARCLANE_ACCESS_CODE` is set.
 - Removed from the repo (copies kept outside the project in `../ARCLANE-cleanup-backup/`): the `research/` niche-audit dataset and Python script (not part of the web app), the unused `stage-workspace.tsx` component, and the tracked `tsconfig.tsbuildinfo` build artifact (now gitignored). `PROJECT_MEMORY.md` is retained as project documentation and updated.
 - Full lint of every changed file reports no new issues; the pre-existing Ideas hydration-effect rule warnings are now handled with the same scoped disable comments used by Research.
+
+On 2026-09-06, a creator-requested app-update batch (the "APP UPDATE" session, resumed after a credit interruption) was implemented and validated:
+- Ideas: creator-supplied demand/competition signal and past-video performance feedback are carried through `WorkflowContext` and used as screening evidence only — the model is still forbidden from inventing metrics. The stale "10-14 minute" constraint was removed from Ideas and Research.
+- Script: the hook standard now targets the first 3–8 seconds of a 2026 browse feed, requires the opening to confirm the packaging promise, and applies a re-hook/momentum cadence through the body — consistently in Script Draft and Script Recheck (Recheck stop rules updated).
+- Channel prompt: YouTube's inauthentic-content policy is named explicitly in `channelSystemPrompt` with durable wording — originality is a binding constraint and mass-produced/generic/repetitive output is barred.
+- Description: chapters are allowed when the script supports them (0:00-first, ≤12 entries), body-length target raised to a ~150–250 word norm while platform caps stay safe, the stale guessed-timestamp ban was removed from the copy preview, and the Translate prompt now matches the real Cold-open/Closing-payoff movement structure instead of a dead 4-act shape.
+- `prompts.ts`: Visuals/Audio/Thumbnails/Shorts no longer hardcode modesty/faith-safe `true`; every stage reads the creator's real settings (`data.visualModesty.mode`, `data.audioMode.mode`), including the Shorts output contract and final quality gate.
+- Validators are no longer dead ends. Audio and Shorts parsers self-repair (timing clamped, coverage gaps closed, faith violations downgraded to silence) and report review warnings; Description drops only unusable titles/fields; Thumbnails keep every usable option (≥1) and turn the "three options / text-free + text-led mix" expectations into review notes instead of rejections. Visuals already salvages malformed scenes, auto-variants repeated scene uses, checkpoints protected parts and resumes, so its remaining errors are structural/IO/recovery-limit only. Structural JSON-parse failures, genuinely empty output, server errors and browser-storage failures still surface as errors so nothing unsafe is ever saved.
+- Thumbnails UI now explains YouTube's native 3-variant Test & Compare path for the three generated directions, without promising views or performance.
+- Validation on 2026-09-06: targeted ESLint on every changed file, full `tsc --noEmit`, `NITRO_PRESET=vercel` production build, and local `/` + `/studio` HTTP 200 checks all passed; no provider/Firecrawl credit was consumed.
+
+On 2026-09-07, a full system-prompt audit and three prompt-level improvements were completed:
+- Read all 11 stage prompts (1184 lines) and all 9 workspace components; wrote a comprehensive audit to `SYSTEM_PROMPT_AUDIT_2026-09-07.md`. Overall verdict: 8.5/10 — the pipeline is retention-aware, evidence-first, and platform-compliant.
+- Visuals prompt: added visual pacing/attention-renewal guidance to `<editorial_grammar>` — alternate tight/wide, shift pace at movement boundaries, visible change at every story transition so the viewer's eye is renewed.
+- Audio prompt: added emotional-arc guidance to `<selection_rules>` — intensity rises and falls with the story's tension, softening for explanation and building for reveals.
+- Voiceover prompt: bumped version `2026_08_V3` → `2026_09_V4` and added a `<creator_direction>` slot for consistency with all other stages.
+- TypeScript `tsc --noEmit` passed cleanly after all changes; no provider credit consumed.
+
+On 2026-09-07 (session 2), a full design audit and button readability fix were completed:
+- **Design bug found**: Studio buttons across 20+ CSS files had font-sizes of 7px–10px — far below readable. 100+ instances.
+- **Fix applied in `globals.css`**: Added a central minimum readability rule — all `.module-shell` and `.settings-shell` buttons now have `font-size: max(12px, 0.75em)` as a floor; lab action buttons (Script, Research, Voiceover, Visuals, Audio, Thumbnails, Description, Shorts, Recheck) get `max(13px, 0.8em)` with `!important` to override per-component CSS.
+- This is a non-destructive override: it only raises small fonts, never lowers larger ones.
+- TypeScript `tsc --noEmit` passed cleanly after changes.
+
+On 2026-09-07 (session 3), four research-backed prompt improvements were applied after internet research on 2026 YouTube documentary trends, retention psychology, and viral history-content patterns:
+- **Ideas prompt**: Added viral trigger screening — ideas are now privately screened for audience-pull mechanisms (hidden cause, modern relevance, human experience, strategic decision, forgotten figure, visual transformation, myth correction). An idea with no trigger is weak even when the evidence is strong.
+- **Script Draft prompt**: Added three new success criteria: (1) LAYERED CURIOSITY — open a gap in the first 30 seconds, layer additional gaps throughout, close one while opening another, never close all until the final movement; (2) MICRO-RHYTHM — vary sentence length and shift tonal energy roughly every 30–60 spoken seconds so the listener's attention is renewed at a micro level, not only at movement boundaries; (3) EMOTIONAL ARC — map a progression across the whole documentary (curiosity → tension → discovery → satisfaction) so it feels like a journey, not a lecture.
+- **Script Recheck prompt**: Added matching criteria — curiosity gap layering check, micro-rhythm verification, and updated stop_rules to include all new criteria.
+- **final_check** in Script Draft and **stop_rules** in Recheck updated to enforce the new criteria.
+- Sources: OverseerOS (Jul 2026), johnisaacson.co.uk (Mar 2026), layer3labs.io (Aug 2026), vidpros.com (Aug 2026), HubSpot (2026). Research showed curiosity gaps increase retention 40–60%, emotional content retains 2x more viewers than informational, 70% of drop-off happens in first 30 seconds, and pattern interrupts every 30–60 seconds prevent attention drift.
+- TypeScript `tsc --noEmit` passed cleanly; no provider credit consumed.
 

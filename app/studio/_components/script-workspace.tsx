@@ -1,8 +1,9 @@
-'use client';
+﻿﻿'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StudioStageId } from '../_lib/stages';
 import { studioNavigate } from '../_lib/navigation';
+import { friendlyFetchError } from '../_lib/errors';
 import ScriptDocumentView, { getScriptSignals, normalizeScriptMarkdown } from './script-document-view';
 import StudioSidebar from './studio-sidebar';
 
@@ -104,7 +105,7 @@ function getScriptIssues(record: StageRecord | undefined, content: string, resea
   if (!record || !content.trim()) return ['No Script is available.'];
   const signals = getScriptSignals(content);
   const issues: string[] = [];
-  if (!researchReady || !record.grounded) issues.push('The approved Research is no longer connected.');
+  if (!researchReady) issues.push('The approved Research is no longer connected.');
   if (signals.status === 'NEEDS RESEARCH') issues.push('The reviewer says this story needs more Research before Voiceover.');
   if (signals.hasVerificationLeak) issues.push('The Script still contains an unresolved Research note.');
   return [...new Set(issues)];
@@ -149,13 +150,10 @@ export default function ScriptWorkspace() {
     });
   }, [researchRecord?.sources]);
   const researchDecision = researchStatus(researchRecord?.content ?? '');
-  const researchReady = Boolean(
-    selectedIdea
-    && researchRecord?.content.trim()
-    && researchRecord.grounded
-    && researchSources.length >= 3
-    && (researchDecision === 'READY' || researchDecision === 'READY WITH CONDITIONS'),
-  );
+  // Research is ready for Script as long as the content exists. The handoff
+  // status (READY / NOT READY) is a non-blocking signal — the creator decides.
+  const researchReady = Boolean(selectedIdea && researchRecord?.content.trim());
+  const researchUngrounded = Boolean(researchRecord?.content.trim() && (!researchRecord.grounded || researchSources.length < 3));
   const dirty = Boolean(activeRecord && draft !== activeRecord.content);
   const signals = useMemo(() => getScriptSignals(draft), [draft]);
   const scriptIssues = useMemo(() => getScriptIssues(activeRecord, draft, researchReady), [activeRecord, draft, researchReady]);
@@ -272,10 +270,6 @@ export default function ScriptWorkspace() {
       setError('Select an idea and complete Research before writing the Script.');
       return;
     }
-    if (!researchReady) {
-      setError('Research has not completed its automatic evidence handoff. Return to Research and use Verify & continue.');
-      return;
-    }
     if (hasDownstreamWork() && !window.confirm('Replacing this Script will clear Voiceover and every later production output so old wording is not reused. Continue?')) return;
 
     requestInFlight.current = true;
@@ -342,7 +336,7 @@ export default function ScriptWorkspace() {
     } catch (requestError) {
       if (requestError instanceof Error && requestError.name === 'AbortError') { setNotice('Script request cancelled. Nothing was replaced.'); setError(''); }
       else {
-        setError(requestError instanceof Error ? requestError.message : 'Script generation failed. Please try again.');
+        setError(friendlyFetchError(requestError, 'Script generation failed. Please try again.'));
         setNotice('');
       }
     } finally {
@@ -352,7 +346,7 @@ export default function ScriptWorkspace() {
       setLoading(false);
       setRequestKind('');
     }
-  }, [activeRecord, connections, direction, hasDownstreamWork, modelId, persistWorkflow, providerId, researchReady, researchRecord, researchSources, selectedIdea]);
+  }, [activeRecord, connections, direction, hasDownstreamWork, modelId, persistWorkflow, providerId, researchRecord, researchSources, selectedIdea]);
 
   const reviewScript = useCallback(async () => {
     if (requestInFlight.current) {
@@ -371,10 +365,6 @@ export default function ScriptWorkspace() {
     }
     if (dirty) {
       setError('Save your Script edits before Recheck & Polish so the original version remains reliable.');
-      return;
-    }
-    if (!researchReady) {
-      setError('The approved Research handoff is no longer available. Return to Research before reviewing this Script.');
       return;
     }
     if (hasDownstreamWork() && !window.confirm('A new final review will clear Voiceover and later outputs so they cannot use an older Script. Continue?')) return;
@@ -451,7 +441,7 @@ export default function ScriptWorkspace() {
     } catch (requestError) {
       if (requestError instanceof Error && requestError.name === 'AbortError') { setNotice('Recheck cancelled. The current Script and Original Draft were not replaced.'); setError(''); }
       else {
-        setError(requestError instanceof Error ? requestError.message : 'Script review failed. Please try again.');
+        setError(friendlyFetchError(requestError, 'Script review failed. Please try again.'));
         setNotice('The current Script and Original Draft were not replaced.');
       }
     } finally {
@@ -589,7 +579,7 @@ export default function ScriptWorkspace() {
       setNotice('✓ স্ক্রিপ্ট সফলভাবে বাংলায় অনুবাদ করা হয়েছে! আপনি নিচে উভয় ভাষায় পর্যালোচনা করতে পারেন।');
     } catch (requestError) {
       if (requestError instanceof Error && requestError.name === 'AbortError') { setNotice('অনুবাদ বাতিল করা হয়েছে। কিছু পরিবর্তন হয়নি।'); setError(''); }
-      else setError(requestError instanceof Error ? requestError.message : 'অনুবাদ ব্যর্থ হয়েছে। আবার চেষ্টা করুন।');
+      else setError(friendlyFetchError(requestError, 'অনুবাদ ব্যর্থ হয়েছে। আবার চেষ্টা করুন।'));
     } finally {
       abortControllerRef.current = null;
       requestInFlight.current = false;
@@ -716,12 +706,13 @@ export default function ScriptWorkspace() {
 
             <details className="script-direction"><summary><div><strong>Optional direction</strong><small>Leave blank for the complete automatic writing system</small></div><i>＋</i></summary><label><span>Use this only for a deliberate emphasis or exclusion. It cannot override the evidence.</span><textarea value={direction} onChange={(event) => setDirection(event.target.value)} placeholder="Example: Keep the tone intimate and restrained; give extra space to the family’s winter routine." /></label></details>
 
-            {!researchReady ? <div className="script-prerequisite"><span>!</span><div><strong>Research is not ready for Script</strong><p>Use the automatic verification action in Research first. Script generation remains manual after the evidence handoff passes.</p></div><a href="/studio/research" onClick={(e) => studioNavigate('/studio/research', e)}>Return to Research</a></div> : null}
+            {!researchReady ? <div className="script-prerequisite"><span>!</span><div><strong>Research is not ready for Script</strong><p>Build the Research document in the Research stage before writing the Script.</p></div><a href="/studio/research" onClick={(e) => studioNavigate('/studio/research', e)}>Return to Research</a></div> : null}
+            {researchReady && researchUngrounded ? <div className="script-prerequisite script-prerequisite-warning"><span>⚠</span><div><strong>Research has no verified sources</strong><p>This Research was built without search. The Script can still be written—just verify the claims yourself before production.</p></div></div> : null}
             {error ? <p className="script-message error" role="alert"><span>!</span>{error}</p> : null}
             {notice ? <p className="script-message success" role="status"><span>✓</span>{notice}</p> : null}
             {loading ? <button type="button" className="script-cancel" onClick={() => abortControllerRef.current?.abort()}>Cancel request · {elapsedSeconds}s</button> : null}
 
-            <footer><div><strong>Writing protection</strong><span>Manual start · one request at a time · Research-only facts · Original Draft preserved</span></div><button type="button" disabled={!researchReady || !activeModel || loading} onClick={() => void generateScript()}>{loading && requestKind === 'write' ? <><i className="automation-spinner" /> Writing carefully…</> : <>{activeRecord ? 'Write a new Draft' : 'Write full Script'} <b>→</b></>}</button></footer>
+            <footer><div><strong>Writing protection</strong><span>Manual start · one request at a time · Research-only facts · Original Draft preserved</span></div><button type="button" disabled={!activeModel || loading} onClick={() => void generateScript()}>{loading && requestKind === 'write' ? <><i className="automation-spinner" /> Writing carefully…</> : <>{activeRecord ? 'Write a new Draft' : 'Write full Script'} <b>→</b></>}</button></footer>
           </section>
 
           {activeRecord ? <>
@@ -814,7 +805,7 @@ export default function ScriptWorkspace() {
                 >
                   {loading && requestKind === 'translate' ? 'অনুবাদ হচ্ছে…' : bengaliDraft ? (viewMode === 'bengali' ? 'View English' : 'বাংলা অনুবাদ প্রিভিউ') : 'বাংলা অনুবাদ প্রিভিউ'}
                 </button>
-                <button className="primary" type="button" disabled={loading || !researchReady || !activeModel} onClick={() => void generateScript()}>{loading && requestKind === 'write' ? 'Writing…' : 'New Draft'}</button>
+                <button className="primary" type="button" disabled={loading || !activeModel} onClick={() => void generateScript()}>{loading && requestKind === 'write' ? 'Writing…' : 'New Draft'}</button>
               </footer>
             </section>
 
@@ -827,7 +818,7 @@ export default function ScriptWorkspace() {
 
               {hasDistinctOriginal ? <details className="script-original"><summary><div><strong>Original Draft (backup)</strong><span>Preserved before the editorial pass · {getScriptSignals(originalDraft).wordCount.toLocaleString()} spoken words</span></div><i>＋</i></summary><ScriptDocumentView content={originalDraft} /><footer><span>The reviewed version remains active unless you restore this Draft.</span><button type="button" onClick={restoreOriginal}>Use Original Draft instead</button></footer></details> : null}
 
-              <footer className="script-recheck-actions"><div><span>One manual editorial request</span><strong>{dirty ? 'Save edits before Recheck' : reviewApproved ? 'Run again only if you want another deliberate pass' : 'Original Draft will remain recoverable'}</strong><small>May use unused approved Research · no outside facts · no hidden quality loop</small></div><button type="button" disabled={loading || dirty || !researchReady || !activeModel} onClick={() => void reviewScript()}>{loading && requestKind === 'review' ? <><i className="automation-spinner" /> Rechecking carefully…</> : <>{reviewApproved ? 'Polish again (optional)' : 'Recheck & Polish'} <b>→</b></>}</button></footer>
+              <footer className="script-recheck-actions"><div><span>One manual editorial request</span><strong>{dirty ? 'Save edits before Recheck' : reviewApproved ? 'Run again only if you want another deliberate pass' : 'Original Draft will remain recoverable'}</strong><small>May use unused approved Research · no outside facts · no hidden quality loop</small></div><button type="button" disabled={loading || dirty || !activeModel} onClick={() => void reviewScript()}>{loading && requestKind === 'review' ? <><i className="automation-spinner" /> Rechecking carefully…</> : <>{reviewApproved ? 'Polish again (optional)' : 'Recheck & Polish'} <b>→</b></>}</button></footer>
             </section>
           </> : <section className="script-empty"><div>¶</div><p>READY FOR THE STORY</p><h2>Research is present. The Script will begin only when you decide.</h2><span>The engine will write narration—not visual prompts, music notes, voice cues, packaging or filler reserved for later stages.</span></section>}
 

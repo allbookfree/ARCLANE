@@ -1,8 +1,9 @@
-'use client';
+﻿'use client';
 
 import { jsonrepair } from 'jsonrepair';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { studioNavigate } from '../_lib/navigation';
+import { friendlyFetchError } from '../_lib/errors';
 import { getSpokenScriptText } from './script-document-view';
 import StudioSidebar from './studio-sidebar';
 
@@ -58,14 +59,16 @@ type TitleOption = {
   promise: string;
   thumbnailFit: string;
 };
+type DescriptionChapter = { time: string; label: string };
 type DescriptionPlan = {
-  version: 'ARCLANE_UPLOAD_PACKAGE_2026_08_V4';
+  version: 'ARCLANE_UPLOAD_PACKAGE_2026_09_V5';
   recommendedTitleId: string;
   recommendationReason: string;
   titles: TitleOption[];
   description: {
     openingLines: string[];
     body: string;
+    chapters: DescriptionChapter[];
   };
 };
 
@@ -73,7 +76,8 @@ const workflowStorageKey = 'arclane.creator-workflow.v1';
 const connectionStorageKey = 'arclane.model-connections.v1';
 const modelPreferenceKey = 'arclane.workflow-models.v1';
 const connectionChangeEvent = 'arclane:model-connections-changed';
-const planVersion = 'ARCLANE_UPLOAD_PACKAGE_2026_08_V4' as const;
+const planVersion = 'ARCLANE_UPLOAD_PACKAGE_2026_09_V5' as const;
+const acceptedPlanVersions = new Set([planVersion, 'ARCLANE_UPLOAD_PACKAGE_2026_08_V4']);
 const initialWorkflow: WorkflowState = { stages: {} };
 const trafficFits = new Set<TrafficFit>(['browse', 'balanced', 'search']);
 
@@ -134,7 +138,7 @@ function normalizeWords(value: string) {
 
 function parseDescriptionPlan(content: string, thumbnailHeadline: string): { plan: DescriptionPlan; droppedTitles: number } {
   const root = parseJsonObject(content, 'Titles & Description');
-  if (stringValue(root.version) !== planVersion) throw new Error('The AI returned an older format. Your saved work is unchanged; click Create Titles & Description again.');
+  if (!acceptedPlanVersions.has(stringValue(root.version))) throw new Error('The AI returned an unrecognized format. Your saved work is unchanged; click Create Titles & Description again.');
 
   const rawTitles = Array.isArray(root.titles) ? root.titles : [];
   // Salvage instead of total discard: incomplete, oversized or duplicated
@@ -163,8 +167,8 @@ function parseDescriptionPlan(content: string, thumbnailHeadline: string): { pla
       thumbnailFit: stringValue(item.thumbnailFit),
     });
   }
-  if (titles.length < 2) {
-    throw new Error(`The AI returned only ${titles.length} usable title choice${titles.length === 1 ? '' : 's'} (from ${rawTitles.length}). Your saved result is unchanged; try once more or choose another model.`);
+  if (!titles.length) {
+    throw new Error(`The AI returned no usable title choice (from ${rawTitles.length}). Your saved result is unchanged; try once more or choose another model.`);
   }
 
   const titleIds = new Set(titles.map((item) => item.id));
@@ -174,10 +178,23 @@ function parseDescriptionPlan(content: string, thumbnailHeadline: string): { pla
   const rawDescription = asRecord(root.description);
   const openingLines = stringList(rawDescription.openingLines, 2);
   const body = stringValue(rawDescription.body);
-  const bodyWords = body.split(/\s+/).filter(Boolean).length;
-  if (!openingLines.length || !body || bodyWords < 70 || bodyWords > 220) {
-    throw new Error('The public description was incomplete or unnecessarily long. Your saved result is unchanged; try once more.');
+  // Only a genuinely empty description is a failure. Length is an editorial
+  // preference, not a reason to discard the creator's finished work.
+  if (!openingLines.length || !body) {
+    throw new Error('The public description came back empty. Your saved result is unchanged; try once more.');
   }
+
+  const rawChapters = Array.isArray(rawDescription.chapters) ? rawDescription.chapters : [];
+  const chapters: DescriptionChapter[] = [];
+  for (const entry of rawChapters.slice(0, 12)) {
+    const item = asRecord(entry);
+    const time = stringValue(item.time);
+    const label = stringValue(item.label);
+    if (!/^\d{1,2}:\d{2}(?::\d{2})?$/.test(time) || !label) continue;
+    chapters.push({ time, label });
+  }
+  // YouTube only treats a chapter list as valid when it starts at 0:00.
+  const usableChapters = chapters.length >= 3 && /^0{1,2}:00$/.test(chapters[0].time) ? chapters : [];
 
   const publicLength = openingLines.join('\n').length + body.length + 2;
   if (publicLength > 5000) throw new Error("The public description exceeds YouTube's 5,000-character limit. Your saved result is unchanged.");
@@ -187,7 +204,7 @@ function parseDescriptionPlan(content: string, thumbnailHeadline: string): { pla
     recommendedTitleId,
     recommendationReason: stringValue(root.recommendationReason) || 'Strongest truthful balance of clarity, curiosity and selected-Thumbnail fit.',
     titles,
-    description: { openingLines, body },
+    description: { openingLines, body, chapters: usableChapters },
   };
   return { plan, droppedTitles };
 }
@@ -232,10 +249,14 @@ function compactDocument(value: string, limit: number) {
 }
 
 function composePublicDescription(plan: DescriptionPlan) {
+  const chapterBlock = plan.description.chapters.length
+    ? ['', 'Chapters', ...plan.description.chapters.map((item) => `${item.time} ${item.label}`)]
+    : [];
   return [
     ...plan.description.openingLines,
     '',
     plan.description.body,
+    ...chapterBlock,
   ].join('\n');
 }
 
@@ -519,7 +540,7 @@ export default function DescriptionWorkspace() {
           <div className="description-request-note"><span>AUTOMATIC</span><p>Your Final Script and selected Thumbnail are added automatically. Research evidence stays private; no source link is published.</p></div>
           {error && <div className="description-message error"><span>!</span><p>{error}</p></div>}
           {notice && <div className="description-message success"><span>✓</span><p>{notice}</p></div>}
-          <div className="description-build-row"><div><strong>{handoffReady ? plan ? 'Create a fresh version only when needed' : 'Everything is ready' : 'Final Thumbnail required'}</strong><span>Your saved result changes only after a complete new result passes every check.</span></div><div className="description-footer-actions">{loading ? <button type="button" className="script-cancel" onClick={() => abortControllerRef.current?.abort()}>Cancel · {elapsedSeconds}s</button> : null}<button type="button" disabled={loading || !handoffReady || !activeModel} onClick={buildUploadPackage}>{loading ? <><i className="description-spinner" /> Creating carefully… {elapsedSeconds}s</> : <>{plan ? 'Create Fresh Version' : 'Create Titles & Description'} <span>→</span></>}</button></div></div>
+          <div className="description-build-row"><div><strong>{handoffReady ? plan ? 'Create a fresh version only when needed' : 'Everything is ready' : 'Final Thumbnail required'}</strong><span>Your saved result changes only after a complete new result passes structural checks; quality notes appear as review reminders.</span></div><div className="description-footer-actions">{loading ? <button type="button" className="script-cancel" onClick={() => abortControllerRef.current?.abort()}>Cancel · {elapsedSeconds}s</button> : null}<button type="button" disabled={loading || !handoffReady || !activeModel} onClick={buildUploadPackage}>{loading ? <><i className="description-spinner" /> Creating carefully… {elapsedSeconds}s</> : <>{plan ? 'Create Fresh Version' : 'Create Titles & Description'} <span>→</span></>}</button></div></div>
         </section>
 
         {plan ? <>
@@ -536,11 +557,11 @@ export default function DescriptionWorkspace() {
               <article><span>1 · FINAL TITLE</span><strong>{selectedTitle?.title || 'Choose one title above'}</strong><button type="button" disabled={!planCurrent || !selectedTitle} onClick={() => selectedTitle && copyText(selectedTitle.title, 'Final title copied.')}>Copy Final title</button></article>
               <article><span>2 · FULL DESCRIPTION</span><p>Two strong opening lines and one concise unique summary are combined in the correct order. No source link is published.</p><button type="button" disabled={!planCurrent} onClick={() => copyText(publicDescription, 'Full public description copied.')}>Copy Full description</button></article>
             </div>
-            <details className="description-preview"><summary><span>Preview exactly what “Copy Full description” contains</span><b>View</b></summary><div><div className="description-opening">{plan.description.openingLines.map((line) => <strong key={line}>{line}</strong>)}</div><p className="description-body">{plan.description.body}</p></div></details>          </section>
+            <details className="description-preview"><summary><span>Preview exactly what “Copy Full description” contains</span><b>View</b></summary><div><div className="description-opening">{plan.description.openingLines.map((line) => <strong key={line}>{line}</strong>)}</div><p className="description-body">{plan.description.body}</p>{plan.description.chapters.length ? <div className="description-opening"><strong>Chapters</strong>{plan.description.chapters.map((item) => <span key={`${item.time}-${item.label}`}>{item.time} {item.label}</span>)}</div> : null}</div></details>          </section>
 
           <details className="description-optional">
             <summary><div><span>BEFORE PUBLISHING</span><strong>Three safety settings—not part of your public Description</strong></div><b>View</b></summary>
-            <div className="description-support"><article><header><div><p>AI DISCLOSURE</p><h2>Use YouTube&apos;s Altered content setting</h2></div></header><p>Choose “Yes” when realistic AI-generated historical scenes could be mistaken for real footage. A sentence in the Description does not replace this setting.</p></article><article><header><div><p>CHAPTERS</p><h2>Keep Automatic chapters enabled</h2></div></header><p>Do not publish guessed timestamps. Add manual chapters only after the final edit provides exact times.</p></article><article><header><div><p>COPYRIGHT</p><h2>Rights must be verified separately</h2></div></header><p>Use only visuals and audio you own or can use commercially. A source link or credit does not grant permission.</p></article><article className="description-backup"><header><div><p>BACKUP</p><h2>Save this result</h2></div><button type="button" onClick={downloadPackage}>Download</button></header><p>Optional JSON backup for this computer. It is not uploaded to YouTube.</p></article></div>
+            <div className="description-support"><article><header><div><p>AI DISCLOSURE</p><h2>Use YouTube&apos;s Altered content setting</h2></div></header><p>Choose “Yes” when realistic AI-generated historical scenes could be mistaken for real footage. A sentence in the Description does not replace this setting.</p></article><article><header><div><p>CHAPTERS</p><h2>Check the estimated times before publishing</h2></div></header><p>When the Script supports it, draft chapters are generated and included at the end of your copied description. The labels are accurate but the times are estimates — open your final edit, correct each timestamp, and keep the first one at 0:00 or YouTube will ignore the whole list.</p></article><article><header><div><p>COPYRIGHT</p><h2>Rights must be verified separately</h2></div></header><p>Use only visuals and audio you own or can use commercially. A source link or credit does not grant permission.</p></article><article className="description-backup"><header><div><p>BACKUP</p><h2>Save this result</h2></div><button type="button" onClick={downloadPackage}>Download</button></header><p>Optional JSON backup for this computer. It is not uploaded to YouTube.</p></article></div>
           </details>
         </> : <section className="description-empty"><div>≡</div><p>STEP 1</p><h2>Create your Titles &amp; Description</h2><span>Choose the AI model above, then click Create Titles &amp; Description once. Your Script and selected Thumbnail are connected automatically; research evidence stays private.</span></section>}
 

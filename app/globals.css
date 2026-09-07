@@ -902,6 +902,27 @@ h1 em { color: var(--blue); font-family: Georgia, 'Times New Roman', serif; font
   font-size: 16px;
 }
 
+/* Studio button minimum readability — no button text below 12px */
+.module-shell button,
+.settings-shell button,
+.module-shell a.button,
+.settings-shell a.button {
+  font-size: max(12px, 0.75em);
+}
+
+/* Ensure lab action buttons and navigation CTAs are clearly readable */
+.module-shell .script-lab > footer button,
+.module-shell .research-lab > footer button,
+.module-shell .voice-lab > footer button,
+.module-shell .visual-control > footer button,
+.module-shell .audio-build-row > button,
+.module-shell .thumbnail-build-row > button,
+.module-shell .description-build-row button,
+.module-shell .shorts-builder > footer button,
+.module-shell .script-recheck-actions button {
+  font-size: max(13px, 0.8em) !important;
+}
+
 @media (min-width: 761px) {
   .module-shell, .settings-shell { grid-template-columns: 250px minmax(0,1fr); }
 }

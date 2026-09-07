@@ -1,9 +1,10 @@
-'use client';
+﻿'use client';
 
 import { jsonrepair } from 'jsonrepair';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StudioStageId } from '../_lib/stages';
 import { studioNavigate } from '../_lib/navigation';
+import { friendlyFetchError } from '../_lib/errors';
 import ScriptDocumentView, { getSpokenScriptText } from './script-document-view';
 import StudioSidebar from './studio-sidebar';
 
@@ -69,6 +70,7 @@ type AudioPlan = {
   version: 'ARCLANE_AUDIO_PLAN_2026_08_V3';
   mode: AudioMode;
   zones: AudioZone[];
+  warnings?: string[];
 };
 const connectionStorageKey = 'arclane.model-connections.v1';
 const workflowStorageKey = 'arclane.creator-workflow.v1';
@@ -215,6 +217,7 @@ function parseAudioPlan(content: string, mode: AudioMode, totalDuration: number,
   const rawZones = Array.isArray(root.zones) ? root.zones : [];
   if (!rawZones.length) throw new Error('The model returned no usable Audio timeline. Your saved work is unchanged; try again or choose another model.');
 
+  const warnings: string[] = [];
   let previousEnd = -0.001;
   const zones = rawZones.map((value, index) => {
     const raw = asRecord(value);
@@ -245,15 +248,25 @@ function parseAudioPlan(content: string, mode: AudioMode, totalDuration: number,
     };
 
     if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) || startSeconds < 0 || endSeconds <= startSeconds || endSeconds > totalDuration + 0.2) {
-      throw new Error(zone.zoneId + ' has an invalid time range. Nothing was replaced; click Build Audio Plan once more.');
+      // Repair instead of discard: clamp the section into the real timeline so
+      // one bad number can never destroy an otherwise usable plan.
+      const safeStart = Math.min(Math.max(Number.isFinite(startSeconds) ? startSeconds : previousEnd + 0.1, 0), totalDuration);
+      const safeEnd = Math.min(Math.max(Number.isFinite(endSeconds) ? endSeconds : safeStart + 1, safeStart + 0.5), totalDuration);
+      zone.startSeconds = Math.round(safeStart * 10) / 10;
+      zone.endSeconds = Math.round(safeEnd * 10) / 10;
+      warnings.push(`${zone.zoneId} had an out-of-range time and was fitted to the timeline.`);
     }
-    if (startSeconds < previousEnd - 0.1) throw new Error('The Audio sections overlap or are out of order. Nothing was replaced; click Build Audio Plan once more.');
+    if (zone.startSeconds < previousEnd - 0.1) {
+      zone.startSeconds = Math.round(Math.max(previousEnd, 0) * 10) / 10;
+      if (zone.endSeconds <= zone.startSeconds) zone.endSeconds = Math.min(zone.startSeconds + 0.5, totalDuration);
+      warnings.push(`${zone.zoneId} overlapped the previous section and was moved to start after it.`);
+    }
     if (zone.capCut) {
-      const maximumFade = Math.max(0, Math.min(5, (endSeconds - startSeconds) / 3));
+      const maximumFade = Math.max(0, Math.min(5, (zone.endSeconds - zone.startSeconds) / 3));
       zone.capCut.fadeInSeconds = Math.round(Math.min(zone.capCut.fadeInSeconds, maximumFade) * 10) / 10;
       zone.capCut.fadeOutSeconds = Math.round(Math.min(zone.capCut.fadeOutSeconds, maximumFade) * 10) / 10;
     }
-    previousEnd = endSeconds;
+    previousEnd = zone.endSeconds;
     return zone;
   });
 
@@ -277,18 +290,41 @@ function parseAudioPlan(content: string, mode: AudioMode, totalDuration: number,
 
   const firstZone = essentialZones[0];
   const lastZone = essentialZones[essentialZones.length - 1];
-  const uncoveredBoundary = firstZone.startSeconds > 0.1 || Math.abs(lastZone.endSeconds - totalDuration) > 0.2;
-  const uncoveredGap = essentialZones.some((zone, index) => index > 0 && Math.abs(zone.startSeconds - essentialZones[index - 1].endSeconds) > 0.2);
-  if (requireCompleteCoverage && (uncoveredBoundary || uncoveredGap)) {
-    throw new Error('The Audio plan did not cover the complete ' + formatTime(totalDuration) + ' timeline. Your previous plan is unchanged; click Build Audio Plan again.');
+  // Close the timeline instead of rejecting it. A short gap is a mechanical
+  // flaw the editor can fix in seconds; losing the whole plan is not.
+  if (firstZone.startSeconds > 0.1) {
+    warnings.push(`The plan started at ${formatTime(firstZone.startSeconds)} instead of 0:00; the first section was extended to the start.`);
+    firstZone.startSeconds = 0;
+  }
+  essentialZones.forEach((zone, index) => {
+    if (index === 0) return;
+    const previous = essentialZones[index - 1];
+    if (Math.abs(zone.startSeconds - previous.endSeconds) > 0.2) {
+      warnings.push(`A gap before ${zone.zoneId} was closed automatically.`);
+      zone.startSeconds = previous.endSeconds;
+      if (zone.endSeconds <= zone.startSeconds) zone.endSeconds = Math.min(zone.startSeconds + 0.5, totalDuration);
+    }
+  });
+  if (requireCompleteCoverage && Math.abs(lastZone.endSeconds - totalDuration) > 0.2) {
+    warnings.push(`The plan ended at ${formatTime(lastZone.endSeconds)}; the final section was extended to ${formatTime(totalDuration)}.`);
+    lastZone.endSeconds = totalDuration;
   }
 
   if (mode === 'faith_safe') {
-    const unsafeZone = essentialZones.find((zone) => zone.soundType === 'music' || hasForbiddenSoundText(zone.searchQuery));
-    if (unsafeZone) throw new Error('The model included a musical element while Faith-safe audio was on. Nothing was replaced; try again or choose another model.');
+    // Downgrade instead of reject: a musical suggestion becomes silence, which
+    // is always a safe substitute, and the creator is told exactly what changed.
+    for (const zone of essentialZones) {
+      if (zone.soundType === 'music' || hasForbiddenSoundText(zone.searchQuery)) {
+        warnings.push(`${zone.zoneId} suggested a musical element while Faith-safe audio was on; it was replaced with silence.`);
+        zone.soundType = 'silence';
+        zone.searchQuery = '';
+        zone.source = 'none';
+        zone.capCut = null;
+      }
+    }
   }
 
-  return { version: audioPlanVersion, mode, zones: essentialZones };
+  return { version: audioPlanVersion, mode, zones: essentialZones, warnings };
 }
 
 function readSavedPlan(content: string, expectedDuration: number): AudioPlan | null {
@@ -511,9 +547,13 @@ export default function AudioWorkspace() {
         const result = await response.json().catch(() => null) as { output?: string; error?: string; truncated?: boolean } | null;
         if (!result) throw new Error('The server response could not be read while building the Audio Plan. Check the connection and try again.');
         if (!response.ok || !result.output) throw new Error(result.error || 'The model did not return a usable Audio Plan.');
-        if (result.truncated) throw new Error('The model\'s response was cut off by its output limit before finishing the Audio Plan. Nothing was replaced; try again or choose a model with a larger output limit.');
+        // A truncated response is often still repairable, so it is parsed
+        // rather than rejected outright; only a genuinely unreadable plan fails.
         try {
           plan = parseAudioPlan(result.output, audioMode, totalDuration);
+          if (result.truncated && plan) {
+            plan.warnings = [...(plan.warnings ?? []), 'The response was cut off by the model\'s output limit, so the end of the timeline may be incomplete. Check the final sections before editing.'];
+          }
         } catch (parseError) {
           lastFailure = parseError instanceof Error ? parseError.message : 'invalid plan';
           if (attempt === 2) throw parseError;
@@ -538,7 +578,11 @@ export default function AudioWorkspace() {
         stages: { ...fresh.stages, audio: record, thumbnails: undefined, description: undefined, shorts: undefined },
       };
       if (persistWorkflow(next)) {
-        setNotice('Complete Audio Plan saved. All ' + plan.zones.length + ' required section' + (plan.zones.length === 1 ? ' is' : 's are') + ' visible from 0:00 to ' + formatTime(totalDuration) + '.');
+        const repairNotes = plan.warnings ?? [];
+        const baseNotice = 'Complete Audio Plan saved. All ' + plan.zones.length + ' required section' + (plan.zones.length === 1 ? ' is' : 's are') + ' visible from 0:00 to ' + formatTime(totalDuration) + '.';
+        setNotice(repairNotes.length
+          ? baseNotice + ' Adjusted automatically so nothing was lost: ' + repairNotes.join(' ')
+          : baseNotice);
       }
     } catch (requestError) {
       if (requestError instanceof Error && requestError.name === 'AbortError') { setNotice('Audio request cancelled. Nothing was changed.'); setError(''); }

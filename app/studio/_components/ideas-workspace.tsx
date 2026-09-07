@@ -1,9 +1,10 @@
-'use client';
+﻿﻿'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { jsonrepair } from 'jsonrepair';
 import { type StudioStageId } from '../_lib/stages';
 import { studioNavigate } from '../_lib/navigation';
+import { friendlyFetchError } from '../_lib/errors';
 import StudioSidebar from './studio-sidebar';
 
 type ProviderId = 'openai' | 'anthropic' | 'gemini' | 'custom';
@@ -69,6 +70,7 @@ const connectionStorageKey = 'arclane.model-connections.v1';
 const workflowStorageKey = 'arclane.creator-workflow.v1';
 const modelPreferenceKey = 'arclane.workflow-models.v1';
 const searchPreferenceKey = 'arclane.ideas-web-search.v1';
+const audienceSignalKey = 'arclane.ideas-audience-signal.v1';
 const connectionChangeEvent = 'arclane:model-connections-changed';
 const initialWorkflow: WorkflowState = { stages: {}, ideaBatches: [], savedIdeas: [] };
 
@@ -204,6 +206,8 @@ export default function IdeasWorkspace() {
   const [focus, setFocus] = useState(focusOptions[0]);
   const [mix, setMix] = useState(mixOptions[0]);
   const [direction, setDirection] = useState('');
+  const [demandSignal, setDemandSignal] = useState('');
+  const [performanceFeedback, setPerformanceFeedback] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -261,6 +265,17 @@ export default function IdeasWorkspace() {
     window.localStorage.setItem(modelPreferenceKey, JSON.stringify(preferences));
   }, []);
 
+  const saveAudienceSignal = useCallback((nextDemand: string, nextPerformance: string) => {
+    setDemandSignal(nextDemand);
+    setPerformanceFeedback(nextPerformance);
+    try {
+      window.localStorage.setItem(audienceSignalKey, JSON.stringify({
+        demandSignal: nextDemand,
+        performanceFeedback: nextPerformance,
+      }));
+    } catch { /* preference saving is best-effort */ }
+  }, []);
+
   /* eslint-disable react-hooks/set-state-in-effect -- these effects hydrate and reconcile the browser-local workspace after mount */
   useEffect(() => {
     const refresh = () => setConnections(readConnections());
@@ -268,6 +283,7 @@ export default function IdeasWorkspace() {
     const available = readConnections();
     const preference = readJson<Partial<Record<StudioStageId, ModelPreference>>>(modelPreferenceKey, {}).ideas;
     const savedSearchPreferences = readJson<Partial<Record<ProviderId, boolean>>>(searchPreferenceKey, {});
+    const savedAudienceSignal = readJson<{ demandSignal?: string; performanceFeedback?: string }>(audienceSignalKey, {});
     const preferredConnection = available.find((item) => item.providerId === preference?.providerId) ?? available[0];
     const preferredModel = preferredConnection?.models.find((model) => model.id === preference?.modelId) ?? preferredConnection?.models[0];
     const savedBatches = savedWorkflow.ideaBatches?.length
@@ -282,6 +298,8 @@ export default function IdeasWorkspace() {
     setProviderId(preferredConnection?.providerId ?? '');
     setModelId(preferredModel?.id ?? '');
     setSearchPreferences(savedSearchPreferences);
+    setDemandSignal(typeof savedAudienceSignal.demandSignal === 'string' ? savedAudienceSignal.demandSignal : '');
+    setPerformanceFeedback(typeof savedAudienceSignal.performanceFeedback === 'string' ? savedAudienceSignal.performanceFeedback : '');
     setHydrated(true);
     window.addEventListener('storage', refresh);
     window.addEventListener(connectionChangeEvent, refresh);
@@ -359,7 +377,11 @@ export default function IdeasWorkspace() {
           completionPath: connection.completionPath,
           webSearchEnabled,
           extraInstructions: creatorDirection,
-          context: { outputs: { ideas: priorIdeaIndex } },
+          context: {
+            outputs: { ideas: priorIdeaIndex },
+            demandSignal: demandSignal.trim() || undefined,
+            performanceFeedback: performanceFeedback.trim() || undefined,
+          },
         }),
       });
       const result = await response.json() as { output?: string; sources?: Source[]; grounded?: boolean; attempts?: number; retryAfterSeconds?: number; errorCode?: string; error?: string };
@@ -371,10 +393,13 @@ export default function IdeasWorkspace() {
       // slightly short batch is shown rather than discarded, so one imperfect
       // model response can no longer erase otherwise usable ideas.
       const uniqueIdeas = parsedIdeas.filter((idea) => !remembered.has(ideaFingerprint(idea)));
-      if (uniqueIdeas.length < 6) {
+      // Nothing usable at all is the only real failure. Any surviving idea is
+      // kept and the shortfall is reported as a notice, so a weak model
+      // response can never trap the creator with an empty screen.
+      if (!uniqueIdeas.length) {
         throw new Error(duplicates
-          ? `The model returned ${parsedIdeas.length} idea${parsedIdeas.length === 1 ? '' : 's'} but ${duplicates} of ${duplicates === 1 ? 'it is' : 'them are'} already in Idea Memory, leaving only ${uniqueIdeas.length} new. Nothing was saved; generate again so the library stays duplicate-safe.`
-          : `The model returned ${parsedIdeas.length || 'no'} usable ideas instead of a complete set. Nothing was saved; regenerate with this or another model.`);
+          ? `All ${parsedIdeas.length} returned idea${parsedIdeas.length === 1 ? '' : 's'} already exist in Idea Memory, so there was nothing new to add. Generate again for fresh subjects.`
+          : 'The model did not return any usable ideas. Generate again with this or another model.');
       }
 
       const now = new Date().toISOString();
@@ -418,14 +443,14 @@ export default function IdeasWorkspace() {
       if (requestError instanceof Error && requestError.name === 'AbortError') {
         setNotice('Request cancelled. Nothing was changed and your previous work is safe.');
       } else {
-        setError(requestError instanceof Error ? requestError.message : 'Idea generation failed. Please try again.');
+        setError(friendlyFetchError(requestError, 'Idea generation failed. Please try again.'));
       }
     } finally {
       abortControllerRef.current = null;
       requestInFlight.current = false;
       setLoading(false);
     }
-  }, [batches, connections, direction, era, focus, mix, modelId, persistWorkflow, providerId, region, webSearchEnabled, workflow]);
+  }, [batches, connections, direction, era, focus, mix, modelId, persistWorkflow, providerId, region, webSearchEnabled, workflow, demandSignal, performanceFeedback]);
 
   /* eslint-disable react-hooks/set-state-in-effect -- the run=1 handoff intentionally starts one queued discovery run after mount */
   useEffect(() => {
@@ -734,6 +759,8 @@ export default function IdeasWorkspace() {
                   <label><span>Discovery mode</span><select value={mix} onChange={(event) => setMix(event.target.value)}>{mixOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
                 </div>
                 <label className="idea-pro-direction"><span>Optional creative direction</span><textarea value={direction} onChange={(event) => setDirection(event.target.value)} placeholder="Leave blank for fully automatic discovery. Only write here when you deliberately want a special direction." /></label>
+                <label className="idea-pro-direction"><span>Observed demand — paste real data only</span><textarea value={demandSignal} onChange={(event) => saveAudienceSignal(event.target.value, performanceFeedback)} placeholder="Optional. Paste what you actually saw: competitor video titles and their view counts, YouTube search suggestions, comment requests. Leave blank if you have none — the model will never invent numbers." /></label>
+                <label className="idea-pro-direction"><span>Your channel performance so far</span><textarea value={performanceFeedback} onChange={(event) => saveAudienceSignal(demandSignal, event.target.value)} placeholder="Optional. Paste your own results: which past videos did well or poorly, and any CTR / average view duration you have. Used to steer future topics away from what already underperformed." /></label>
               </div>
             </details>
 

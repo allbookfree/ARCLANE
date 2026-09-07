@@ -1,8 +1,9 @@
-'use client';
+﻿'use client';
 
 import { jsonrepair } from 'jsonrepair';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { studioNavigate } from '../_lib/navigation';
+import { friendlyFetchError } from '../_lib/errors';
 import { getSpokenScriptText } from './script-document-view';
 import StudioSidebar from './studio-sidebar';
 
@@ -150,7 +151,7 @@ function colorValue(value: unknown, fallback: string) {
   return /^#[0-9A-F]{6}$/.test(color) ? color : fallback;
 }
 
-function parseThumbnailPlan(content: string, allowLegacy = false): { plan: ThumbnailPlan; droppedConcepts: number } {
+function parseThumbnailPlan(content: string, allowLegacy = false): { plan: ThumbnailPlan; droppedConcepts: number; notes: string[] } {
   const root = parseJsonObject(content);
   const returnedVersion = stringValue(root.version);
   const legacy = legacyPlanVersions.has(returnedVersion);
@@ -158,8 +159,8 @@ function parseThumbnailPlan(content: string, allowLegacy = false): { plan: Thumb
     throw new Error('The model returned an outdated Thumbnail format. Your saved work is unchanged; click Create 3 Options again.');
   }
   const rawConcepts = Array.isArray(root.concepts) ? root.concepts : [];
-  if (rawConcepts.length !== 3) {
-    throw new Error('The model must return exactly 3 genuinely different Thumbnail options. Your previous options are unchanged; click Create 3 Options again.');
+  if (!rawConcepts.length) {
+    throw new Error('The model returned no Thumbnail options. Your previous options are unchanged; click Create 3 Options again.');
   }
 
   const buildConcept = (value: unknown, index: number): ThumbnailConcept => {
@@ -252,13 +253,20 @@ function parseThumbnailPlan(content: string, allowLegacy = false): { plan: Thumb
       concepts.push(concept);
     } catch { droppedConcepts += 1; }
   });
-  if (concepts.length < 2) {
-    throw new Error(`The model returned only ${concepts.length} usable Thumbnail option${concepts.length === 1 ? '' : 's'} after automatic checks. Your previous options are unchanged; click Create 3 Options again or choose another model.`);
+  if (!concepts.length) {
+    throw new Error(`The model returned no usable Thumbnail option after automatic checks (from ${rawConcepts.length}). Your saved work is unchanged; click Create 3 Options again or choose another model.`);
   }
-  if (concepts.length === 3 && !legacy) {
+  // Editorial expectations are reported, never blocking: fewer than three
+  // options or a missing text-free/text-led contrast is a review note, not a
+  // reason to discard work the creator can still use.
+  const notes: string[] = [];
+  if (concepts.length < 3) {
+    notes.push(`Only ${concepts.length} complete option${concepts.length === 1 ? '' : 's'} survived automatic checks instead of the intended three.`);
+  }
+  if (!legacy && concepts.length > 1) {
     const modes = new Set(concepts.map((concept) => concept.textMode));
     if (!modes.has('text_free') || !modes.has('text_led')) {
-      throw new Error('The three options must include at least one text-free and one text-led hypothesis. Your previous options are unchanged.');
+      notes.push('This set does not include both a text-free and a text-led hypothesis. The absence of that contrast is left to your judgement for this story.');
     }
   }
 
@@ -271,7 +279,7 @@ function parseThumbnailPlan(content: string, allowLegacy = false): { plan: Thumb
     migratedFrom: legacy ? returnedVersion : undefined,
     concepts,
   };
-  return { plan, droppedConcepts };
+  return { plan, droppedConcepts, notes };
 }
 
 function readSavedPlan(content: string): ThumbnailPlan | null {
@@ -458,7 +466,7 @@ export default function ThumbnailWorkspace() {
       if (!result) throw new Error('The server response could not be read. Check the connection and try again.');
       if (!response.ok || !result.output) throw new Error(result.error || 'The model did not return a usable Thumbnail Plan.');
       if (result.truncated) throw new Error("The model's response was cut off by its output limit. Nothing was replaced; try again or choose another model.");
-      const { plan: nextPlan, droppedConcepts: droppedInPlan } = parseThumbnailPlan(result.output);
+      const { plan: nextPlan, droppedConcepts: droppedInPlan, notes: planNotes } = parseThumbnailPlan(result.output);
       const record: StageRecord = {
         content: JSON.stringify(nextPlan, null, 2),
         providerName: connection.providerName,
@@ -476,7 +484,8 @@ export default function ThumbnailWorkspace() {
         stages: { ...fresh.stages, thumbnails: record, description: undefined, shorts: undefined },
       };
       if (persistWorkflow(next)) {
-        setNotice(`${nextPlan.concepts.length} complete Thumbnail hypotheses saved${droppedInPlan ? ` (${droppedInPlan} incomplete option${droppedInPlan === 1 ? ' was' : 's were'} dropped automatically)` : ''}. Choose one Final direction below.`);
+        const savedNote = `${nextPlan.concepts.length} complete Thumbnail hypothesis${nextPlan.concepts.length === 1 ? '' : 'es'} saved${droppedInPlan ? ` (${droppedInPlan} incomplete option${droppedInPlan === 1 ? ' was' : 's were'} dropped automatically)` : ''}. Choose one Final direction below.`;
+        setNotice(planNotes.length ? `${savedNote} ${planNotes.join(' ')}` : savedNote);
       }
     } catch (requestError) {
       if (requestError instanceof Error && requestError.name === 'AbortError') { setNotice('Request cancelled. Nothing was replaced.'); setError(''); }
@@ -579,7 +588,7 @@ export default function ThumbnailWorkspace() {
           {plan ? <section className="thumbnail-results">
             <header><div><p>THREE COMPLETE THUMBNAIL PROMPTS</p><h2>Choose what you will generate</h2><span>Each prompt is a finished 16:9 direction. Text appears only when it strengthens the idea; every set includes a visual-only option that lets the image carry the promise.</span></div><div><button type="button" onClick={downloadPlan}>Download plan</button><small>{thumbnailRecord?.providerName} · {thumbnailRecord?.modelName}</small></div></header>
             {plan.migratedFrom ? <p className="thumbnail-stale"><span>!</span>Your older plan is preserved. Create 3 New Options once to receive the current V5 text-free/text-led experiment set.</p> : !planCurrent ? <p className="thumbnail-stale"><span>!</span>This saved plan belongs to older source work. Create three current options before continuing.</p> : null}
-            <div className="thumbnail-use-guide"><span>1</span><p><strong>Generate all three directions</strong>Copy each full prompt into your preferred image model. They test genuinely different viewer-entry ideas, not simple recolours.</p><span>2</span><p><strong>Check at phone size</strong>For text-led options, verify exact spelling. For every option, confirm the subject and visual question remain clear when reduced.</p></div>
+            <div className="thumbnail-use-guide"><span>1</span><p><strong>Generate all three directions</strong>Copy each full prompt into your preferred image model. They test genuinely different viewer-entry ideas, not simple recolours.</p><span>2</span><p><strong>Check at phone size</strong>For text-led options, verify exact spelling. For every option, confirm the subject and visual question remain clear when reduced.</p><span>3</span><p><strong>Run them as a native test</strong>YouTube&apos;s Test &amp; Compare accepts up to three thumbnails per video. Upload all three options with the video and let YouTube choose the best performer — no third-party testing tool needed.</p></div>
             <div className="thumbnail-grid">
               {plan.concepts.map((concept, index) => {
                 const selected = selectedThumbnailId === concept.id;

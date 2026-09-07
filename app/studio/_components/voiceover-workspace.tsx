@@ -1,8 +1,9 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StudioStageId } from '../_lib/stages';
 import { studioNavigate } from '../_lib/navigation';
+import { friendlyFetchError } from '../_lib/errors';
 import ScriptDocumentView, { getScriptSignals, getSpokenScriptText } from './script-document-view';
 import StudioSidebar from './studio-sidebar';
 
