@@ -843,6 +843,12 @@ h1 em { color: var(--blue); font-family: Georgia, 'Times New Roman', serif; font
 .connection-form-intro strong, .connection-model-heading strong, .connection-verified strong { font-size: 11px; }
 .connection-form-intro small, .connection-model-heading small, .connection-verified small { margin-top: 4px; color: #8a929e; font-size: 8px; line-height: 1.5; }
 .connection-custom-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin-top: 20px; padding: 16px; border: 1px solid #e3e6eb; border-radius: 12px; background: #f7f8fa; }
+.connection-mode-toggle { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
+.connection-mode-toggle > button { min-height: 42px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; color: #475569; font-size: 9px; font-weight: 800; cursor: pointer; transition: border-color 150ms ease, box-shadow 150ms ease, color 150ms ease; }
+.connection-mode-toggle > button.active { border-color: var(--blue); background: #f2f5ff; color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
+.provider-field textarea { width: 100%; min-height: 112px; padding: 11px 14px; outline: none; border: 1px solid #cbd5e1; border-radius: 10px; background: #ffffff; color: #0a1428; font-family: inherit; font-size: 12px; line-height: 1.6; resize: vertical; transition: border-color 150ms ease, box-shadow 150ms ease; }
+.provider-field textarea:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.15); }
+.provider-field textarea::placeholder { color: #94a3b8; }
 .connection-key-field { display: grid; gap: 8px; margin-top: 20px; }
 .connection-key-field > span { color: #3f4754; font-size: 9px; font-weight: 900; }
 .connection-key-field > div { display: grid; grid-template-columns: 1fr auto; overflow: hidden; border: 1px solid #d4dae3; border-radius: 11px; background: #fbfcfd; transition: border-color 150ms ease, box-shadow 150ms ease; }

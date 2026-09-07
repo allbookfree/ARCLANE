@@ -126,6 +126,8 @@ export default function ApiProviderSettings() {
   const [completionPath, setCompletionPath] = useState('/chat/completions');
   const [authMethod, setAuthMethod] = useState<AuthMethod>('bearer');
   const [headerName, setHeaderName] = useState('Authorization');
+  const [customMode, setCustomMode] = useState<'auto' | 'manual'>('auto');
+  const [manualModels, setManualModels] = useState('');
   const [models, setModels] = useState<FetchedModel[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [search, setSearch] = useState('');
@@ -163,6 +165,8 @@ export default function ApiProviderSettings() {
     setCompletionPath(savedSelection?.completionPath ?? '/chat/completions');
     setAuthMethod(savedSelection?.authMethod ?? 'bearer');
     setHeaderName(savedSelection?.headerName ?? 'Authorization');
+    setCustomMode('auto');
+    setManualModels('');
     setModels([]);
     setSelectedIds([]);
     setSearch('');
@@ -181,6 +185,16 @@ export default function ApiProviderSettings() {
   async function verifyAndLoadModels(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!activeProvider) return;
+    if (activeProvider.id === 'custom' && customMode === 'manual') {
+      const parsed = parseManualModels(manualModels);
+      if (!parsed.length) {
+        setError('Enter at least one model ID, one per line.');
+        return;
+      }
+      setError('');
+      saveConnection(parsed);
+      return;
+    }
     setLoading(true);
     setError('');
     setModels([]);
@@ -209,15 +223,24 @@ export default function ApiProviderSettings() {
     }
   }
 
-  function toggleModel(modelId: string) {
-    setSelectedIds((current) => current.includes(modelId)
-      ? current.filter((id) => id !== modelId)
-      : [...current, modelId]);
+  function parseManualModels(raw: string): FetchedModel[] {
+    const seen = new Set<string>();
+    const parsed: FetchedModel[] = [];
+    for (const line of raw.split(/[\n,]+/)) {
+      const entry = line.trim().replace(/^-\s+/, '');
+      if (!entry) continue;
+      const separatorIndex = entry.indexOf('|');
+      const id = (separatorIndex === -1 ? entry : entry.slice(0, separatorIndex)).trim();
+      const displayName = separatorIndex === -1 ? '' : entry.slice(separatorIndex + 1).trim();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      parsed.push({ id, name: displayName || id });
+    }
+    return parsed;
   }
 
-  function saveModels() {
-    if (!activeProvider || selectedIds.length === 0) return;
-    const selectedModels = models.filter((model) => selectedIds.includes(model.id));
+  function saveConnection(selectedModels: FetchedModel[]) {
+    if (!activeProvider || selectedModels.length === 0) return;
     const providerName = activeProvider.id === 'custom' ? customName.trim() : activeProvider.name;
     const existingCustom = activeProvider.id === 'custom'
       ? selections.find((selection) => selection.providerId === 'custom' && selection.providerName !== providerName)
@@ -239,6 +262,17 @@ export default function ApiProviderSettings() {
     ]);
     setNotice(`${providerName}: API key and ${selectedModels.length} model${selectedModels.length === 1 ? '' : 's'} saved on this device.`);
     closeConnection();
+  }
+
+  function toggleModel(modelId: string) {
+    setSelectedIds((current) => current.includes(modelId)
+      ? current.filter((id) => id !== modelId)
+      : [...current, modelId]);
+  }
+
+  function saveModels() {
+    if (!activeProvider) return;
+    saveConnection(models.filter((model) => selectedIds.includes(model.id)));
   }
 
   function deleteSelection(providerId: ProviderId, providerName: string) {
@@ -332,16 +366,21 @@ export default function ApiProviderSettings() {
 
             {models.length === 0 ? (
               <form className="connection-form" onSubmit={verifyAndLoadModels}>
-                <div className="connection-form-intro"><span>1</span><p><strong>Verify your API key</strong><small>We will make one official Models API request and return only the models available to this key.</small></p></div>
+                <div className="connection-form-intro"><span>1</span><p><strong>{activeProvider.id === 'custom' && customMode === 'manual' ? 'Save your connection' : 'Verify your API key'}</strong><small>{activeProvider.id === 'custom' && customMode === 'manual' ? 'The key is saved as you enter it—no verification request is sent. Use model IDs exactly as your provider documents them.' : 'We will make one official Models API request and return only the models available to this key.'}</small></p></div>
 
                 {activeProvider.id === 'custom' ? (
                   <div className="connection-custom-fields">
+                    <div className="connection-mode-toggle" role="group" aria-label="Model source">
+                      <button type="button" className={customMode === 'auto' ? 'active' : ''} onClick={() => { setCustomMode('auto'); setError(''); }}>Load model list automatically</button>
+                      <button type="button" className={customMode === 'manual' ? 'active' : ''} onClick={() => { setCustomMode('manual'); setError(''); }}>Enter model IDs manually</button>
+                    </div>
                     <label className="provider-field"><span>Provider name</span><input required value={customName} onChange={(event) => setCustomName(event.target.value)} placeholder="Example: Groq Cloud" /></label>
                     <label className="provider-field"><span>Base URL</span><input required type="url" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://api.provider.com/v1" /></label>
-                    <label className="provider-field"><span>Models path</span><input required value={modelsPath} onChange={(event) => setModelsPath(event.target.value)} /></label>
+                    {customMode === 'auto' ? <label className="provider-field"><span>Models path</span><input required value={modelsPath} onChange={(event) => setModelsPath(event.target.value)} /></label> : null}
                     <label className="provider-field"><span>Completion path</span><input value={completionPath} onChange={(event) => setCompletionPath(event.target.value)} placeholder="/chat/completions" /></label>
                     <label className="provider-field"><span>Authentication</span><select value={authMethod} onChange={(event) => setAuthMethod(event.target.value as AuthMethod)}><option value="bearer">Bearer token</option><option value="api-key">API key header</option></select></label>
                     {authMethod === 'api-key' ? <label className="provider-field provider-field-wide"><span>Header name</span><input required value={headerName} onChange={(event) => setHeaderName(event.target.value)} placeholder="x-api-key" /></label> : null}
+                    {customMode === 'manual' ? <label className="provider-field provider-field-wide"><span>Model IDs (one per line)</span><textarea required value={manualModels} onChange={(event) => setManualModels(event.target.value)} placeholder={'llama-3.3-70b-versatile\nqwen2.5-32b-instruct | Qwen 2.5 32B'} /><small>One model ID per line—comma-separated also works. Add a display name after a | when you want. These IDs are saved exactly as typed and used at generation time.</small></label> : null}
                   </div>
                 ) : null}
 
@@ -352,8 +391,8 @@ export default function ApiProviderSettings() {
 
                 {error ? <p className="connection-error" role="alert"><span>!</span>{error}</p> : null}
 
-                <button className="connection-verify-button" type="submit" disabled={loading}>{loading ? <><i className="provider-spinner" /> Verifying connection…</> : <>Verify key & load models <span aria-hidden="true">→</span></>}</button>
-                <p className="connection-key-privacy"><span aria-hidden="true">⌾</span>Your key is saved locally only after you verify it and select models.</p>
+                <button className="connection-verify-button" type="submit" disabled={loading}>{loading ? <><i className="provider-spinner" /> Verifying connection…</> : <>{activeProvider.id === 'custom' && customMode === 'manual' ? 'Save connection' : 'Verify key & load models'} <span aria-hidden="true">→</span></>}</button>
+                <p className="connection-key-privacy"><span aria-hidden="true">⌾</span>{activeProvider.id === 'custom' && customMode === 'manual' ? 'Your key is saved locally on this device only.' : 'Your key is saved locally only after you verify it and select models.'}</p>
               </form>
             ) : (
               <div className="connection-model-step">
