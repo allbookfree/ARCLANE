@@ -379,7 +379,8 @@ export default function AudioWorkspace() {
   const audioPlanEnd = audioPlan?.zones.at(-1)?.endSeconds ?? 0;
   const coverageComplete = Boolean(audioPlan && totalDuration > 0 && Math.abs(audioPlanEnd - totalDuration) <= 0.2);
   const coveragePercent = totalDuration > 0 ? Math.min(100, Math.round((audioPlanEnd / totalDuration) * 100)) : 0;
-  const scriptFinal = Boolean(scriptRecord?.content.trim() && scriptRecord.scriptReview?.status === 'approved');
+  // Polish is optional: any saved Script counts as the Final Script here.
+  const scriptFinal = Boolean(scriptRecord?.content.trim());
   const voiceCurrent = Boolean(voiceRecord?.content.trim() && voiceRecord.sourceScriptUpdatedAt === scriptRecord?.updatedAt);
   const visualsCurrent = Boolean(
     visualPlan

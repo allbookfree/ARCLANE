@@ -94,29 +94,6 @@ function compactContext(context: WorkflowContext) {
   };
 }
 
-export function stageMaxTokens(stage: AutomationStage, context?: WorkflowContext) {
-  if (stage === 'ideas') return 3200;
-  if (stage === 'scripts' || stage === 'script_review' || stage === 'script_translate') return 14000;
-  if (stage === 'voiceover') return 14000;
-  if (stage === 'visuals') {
-    const clipCount = Array.isArray(context?.visualClipManifest) ? context.visualClipManifest.length : 0;
-    return Math.max(5500, Math.min(12000, 2600 + (clipCount * 260)));
-  }
-  if (stage === 'research') return 10000;
-  if (stage === 'audio') return 3200;
-  if (stage === 'thumbnails') return 6500;
-  if (stage === 'description') return 3600;
-  if (stage === 'shorts') {
-    // A long short (45 possible clips at the 4–8 second beat range) needs far
-    // more than a 60-second one; scale the budget the same way visuals does so
-    // the response is never truncated into a silently incomplete package.
-    const maxSeconds = Number(context?.shortLength?.max) || 60;
-    const clipEstimate = Math.ceil(maxSeconds / 4);
-    return Math.max(7000, Math.min(16000, 3500 + clipEstimate * 260));
-  }
-  return 7000;
-}
-
 export function buildStagePrompt(
   stage: AutomationStage,
   context: WorkflowContext,

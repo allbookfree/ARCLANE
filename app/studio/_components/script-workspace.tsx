@@ -160,6 +160,9 @@ export default function ScriptWorkspace() {
   const review = activeRecord?.scriptReview;
   const reviewApproved = Boolean(review?.status === 'approved' && !dirty);
   const finalReady = Boolean(activeRecord && !scriptIssues.length && reviewApproved && !dirty);
+  // Polish is optional: a saved Script with no blocking issues may continue
+  // even when the Recheck & Polish pass has not been run.
+  const scriptUsable = Boolean(activeRecord && !scriptIssues.length && !dirty);
   const originalDraft = review?.originalContent || activeRecord?.content || '';
   const hasDistinctOriginal = Boolean(originalDraft.trim() && normalizeScriptMarkdown(originalDraft) !== normalizeScriptMarkdown(draft));
 
@@ -491,7 +494,7 @@ export default function ScriptWorkspace() {
     const next: WorkflowState = { ...fresh, stages: { ...clearDownstream(fresh.stages), scripts: record } };
     if (!persistWorkflow(next)) return false;
     setDraft(normalized);
-    if (showNotice) setNotice('Script edits saved locally. Recheck & Polish is required again before Voiceover.');
+    if (showNotice) setNotice('Script edits saved locally. Recheck & Polish is optional—run it again only if you want another pass.');
     setError('');
     return true;
   }
@@ -629,7 +632,7 @@ export default function ScriptWorkspace() {
       setDraft(record.content);
       setViewMode('read');
       setError('');
-      setNotice('Original Draft is now the current Script. Click Recheck & Polish when you want to make it final again.');
+      setNotice('Original Draft is now the current Script. Polish it whenever you want, or continue to Voiceover as is.');
     }
   }
 
@@ -639,11 +642,11 @@ export default function ScriptWorkspace() {
       return;
     }
     if (dirty) {
-      setError('Save your Script edits and run Recheck & Polish before Voiceover.');
+      setError('Save your Script edits before continuing to Voiceover.');
       return;
     }
-    if (!finalReady) {
-      setError('Click Recheck & Polish once to make the current Script final, then Voiceover will open automatically.');
+    if (!scriptUsable) {
+      setError('Resolve the Script notes above before continuing to Voiceover.');
       return;
     }
     studioNavigate('/studio/voiceover');
@@ -717,7 +720,7 @@ export default function ScriptWorkspace() {
 
           {activeRecord ? <>
             <section className="script-output">
-              <header><div><p>{reviewApproved ? 'Reviewed Script' : 'Production Draft'}</p><h2>{reviewApproved ? 'The final story, approved for voice.' : 'The story, ready for its final check.'}</h2><span>{dirty ? 'Unsaved edits' : `Saved ${new Date(activeRecord.updatedAt).toLocaleString()}`}</span></div><div className="script-output-meta"><span className={finalReady ? 'ready' : 'repair'}>{finalReady ? '✓ Final Script approved' : '↻ Recheck required'}</span><small>Writer: {activeRecord.providerName} · {activeRecord.modelName}</small></div></header>
+              <header><div><p>{reviewApproved ? 'Reviewed Script' : 'Production Draft'}</p><h2>{reviewApproved ? 'The final story, approved for voice.' : 'The story, ready for its final check.'}</h2><span>{dirty ? 'Unsaved edits' : `Saved ${new Date(activeRecord.updatedAt).toLocaleString()}`}</span></div><div className="script-output-meta"><span className={finalReady ? 'ready' : 'repair'}>{finalReady ? '✓ Final Script approved' : '↻ Polish optional'}</span><small>Writer: {activeRecord.providerName} · {activeRecord.modelName}</small></div></header>
 
               <div className="script-viewbar">
                 <div>
@@ -779,8 +782,8 @@ export default function ScriptWorkspace() {
 
               <footer className="script-actions">
                 <div>
-                  <span>{dirty ? 'Changes not saved' : finalReady ? 'Final version saved locally' : 'Draft saved locally · Recheck required'}</span>
-                  <small>{finalReady ? 'Voiceover will receive this exact reviewed version.' : 'Editing the Script means it should be polished again before Voiceover.'}</small>
+                  <span>{dirty ? 'Changes not saved' : finalReady ? 'Final version saved locally' : 'Draft saved locally · Polish optional'}</span>
+                  <small>{finalReady ? 'Voiceover will receive this exact reviewed version.' : 'Voiceover will receive this exact version—polished or not.'}</small>
                 </div>
                 {viewMode === 'bengali' && bengaliDraft ? (
                   <>
@@ -810,9 +813,9 @@ export default function ScriptWorkspace() {
             </section>
 
             <section className={`script-recheck${finalReady ? ' approved' : ''}`}>
-              <header><div className="script-recheck-mark">FC</div><div><p>Final Script</p><h2>{finalReady ? 'Your polished Script is ready.' : 'One simple step before Voiceover.'}</h2><span>Click Recheck & Polish once. It improves the full Draft, keeps the Original safe, and makes the result your Final Script.</span></div><strong className={finalReady ? 'approved' : 'pending'}>{finalReady ? '✓ READY' : 'ONE STEP LEFT'}</strong></header>
+              <header><div className="script-recheck-mark">FC</div><div><p>Final Script</p><h2>{finalReady ? 'Your polished Script is ready.' : 'Optional polish before Voiceover.'}</h2><span>Run Recheck & Polish only if you want an editorial pass. It improves the full Draft, keeps the Original safe, and makes the result your Final Script. Skipping it is fine—the saved Script can go to Voiceover as is.</span></div><strong className={finalReady ? 'approved' : 'pending'}>{finalReady ? '✓ READY' : 'OPTIONAL'}</strong></header>
 
-              <section className={`script-quality${finalReady ? ' passed' : ' repair'}`}><div>{finalReady ? '✓' : '1'}</div><span><p>{finalReady ? 'Done' : 'What to do now'}</p><h3>{finalReady ? 'Voiceover is ready—continue below.' : 'Click Recheck & Polish below.'}</h3><small>{finalReady ? `Final Script saved · about ${signals.estimatedMinutes} minutes · length is informational only.` : 'There is no word-count test and no setting to choose. The website handles the check automatically.'}</small></span></section>
+              <section className={`script-quality${finalReady ? ' passed' : ' repair'}`}><div>{finalReady ? '✓' : '1'}</div><span><p>{finalReady ? 'Done' : 'What to do now'}</p><h3>{finalReady ? 'Voiceover is ready—continue below.' : 'Polish below, or simply continue.'}</h3><small>{finalReady ? `Final Script saved · about ${signals.estimatedMinutes} minutes · length is informational only.` : 'Polishing is optional. There is no word-count test and no setting to choose.'}</small></span></section>
 
               <section className="script-recheck-explainer"><div><strong>What the reviewer protects</strong><span>Research facts · human dignity · original promise · causal story · natural English · complete payoffs</span></div><div><strong>What it may rebuild or add</strong><span>Stronger opening · approved Research material · transitions · contrast · payoff · natural spoken flow</span></div></section>
 
@@ -822,7 +825,7 @@ export default function ScriptWorkspace() {
             </section>
           </> : <section className="script-empty"><div>¶</div><p>READY FOR THE STORY</p><h2>Research is present. The Script will begin only when you decide.</h2><span>The engine will write narration—not visual prompts, music notes, voice cues, packaging or filler reserved for later stages.</span></section>}
 
-          <footer className="script-next"><a href="/studio/research" onClick={(e) => studioNavigate('/studio/research', e)}><span>Previous stage</span><strong>← Research</strong></a><div><span>Current production idea</span><strong>{selectedIdea?.title ?? 'Nothing selected'}</strong></div><button type="button" disabled={!finalReady || loading || dirty} onClick={continueToVoiceover}><span>{finalReady ? 'Ready—click to continue' : activeRecord ? 'Click Recheck & Polish above' : 'Write the Script first'}</span><strong>Voiceover <i>→</i></strong></button></footer>
+          <footer className="script-next"><a href="/studio/research" onClick={(e) => studioNavigate('/studio/research', e)}><span>Previous stage</span><strong>← Research</strong></a><div><span>Current production idea</span><strong>{selectedIdea?.title ?? 'Nothing selected'}</strong></div><button type="button" disabled={!scriptUsable || loading || dirty} onClick={continueToVoiceover}><span>{scriptUsable ? (finalReady ? 'Ready—click to continue' : 'Polish is optional—click to continue') : activeRecord ? 'Resolve the notes above first' : 'Write the Script first'}</span><strong>Voiceover <i>→</i></strong></button></footer>
         </div>
       </section>
     </main>

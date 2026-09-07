@@ -713,7 +713,8 @@ export default function VisualsWorkspace() {
   const voiceRecord = workflow.stages.voiceover;
   const visualsRecord = workflow.stages.visuals;
   const selectedIdea = workflow.selectedIdea;
-  const scriptFinal = Boolean(scriptRecord?.content.trim() && scriptRecord.scriptReview?.status === 'approved');
+  // Polish is optional: any saved Script counts as the Final Script here.
+  const scriptFinal = Boolean(scriptRecord?.content.trim());
   const voiceCurrent = Boolean(
     voiceRecord?.content.trim()
     && voiceRecord.sourceScriptUpdatedAt

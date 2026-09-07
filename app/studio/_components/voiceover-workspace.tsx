@@ -158,7 +158,9 @@ export default function VoiceoverWorkspace() {
   const scriptRecord = workflow.stages.scripts;
   const voiceRecord = workflow.stages.voiceover;
   const selectedIdea = workflow.selectedIdea;
-  const scriptFinal = Boolean(scriptRecord?.content.trim() && scriptRecord.scriptReview?.status === 'approved');
+  // Polish is optional: any saved Script is accepted here, approved or not.
+  const scriptApproved = Boolean(scriptRecord?.content.trim() && scriptRecord.scriptReview?.status === 'approved');
+  const scriptFinal = Boolean(scriptRecord?.content.trim());
   const activeConnection = connections.find((item) => item.providerId === providerId);
   const activeModel = activeConnection?.models.find((model) => model.id === modelId);
   const scriptSignals = useMemo(() => getScriptSignals(scriptRecord?.content ?? ''), [scriptRecord?.content]);
@@ -266,7 +268,7 @@ export default function VoiceoverWorkspace() {
   async function prepareVoiceover() {
     if (loading || abortControllerRef.current) return;
     if (!scriptRecord || !scriptFinal) {
-      setError('Return to Script and complete Recheck & Polish before preparing Voiceover.');
+      setError('Write and save the Script before preparing Voiceover.');
       return;
     }
     const connection = connections.find((item) => item.providerId === providerId);
@@ -406,7 +408,7 @@ export default function VoiceoverWorkspace() {
             <div className="voice-handoff-mark">SC</div>
             {scriptRecord ? <>
               <div className="voice-handoff-copy">
-                <div><p>Final Script received</p><strong>{scriptFinal ? '✓ Reviewed and approved' : 'Recheck still required'}</strong></div>
+                <div><p>Final Script received</p><strong>{scriptApproved ? '✓ Reviewed and approved' : 'Draft received · polish skipped'}</strong></div>
                 <h2>{selectedIdea?.title ?? 'Current documentary Script'}</h2>
                 <span>{scriptPreview || 'No spoken narration preview is available.'}</span>
                 <small>{scriptSignals.wordCount.toLocaleString()} spoken words · about {scriptSignals.estimatedMinutes} minutes · {scriptRecord.providerName} · {scriptRecord.modelName}</small>
@@ -414,7 +416,7 @@ export default function VoiceoverWorkspace() {
               <div className="voice-handoff-actions"><button type="button" aria-expanded={scriptOpen} onClick={() => setScriptOpen((open) => !open)}>{scriptOpen ? 'Hide full Script' : 'View full Script'}</button><a href="/studio/scripts" onClick={(e) => studioNavigate('/studio/scripts', e)}>Back to Script</a></div>
               {scriptOpen ? <div className="voice-source-full"><ScriptDocumentView content={scriptRecord.content} /></div> : null}
             </> : <>
-              <div className="voice-handoff-copy"><div><p>Final Script required</p></div><h2>No Script has arrived yet</h2><span>Write and polish the Script first. Voiceover never starts automatically.</span></div>
+              <div className="voice-handoff-copy"><div><p>Final Script required</p></div><h2>No Script has arrived yet</h2><span>Write the Script first. Voiceover never starts automatically.</span></div>
               <a href="/studio/scripts" onClick={(e) => studioNavigate('/studio/scripts', e)}>Open Script →</a>
             </>}
           </section>
@@ -441,7 +443,7 @@ export default function VoiceoverWorkspace() {
               <div className={`voice-compatibility ${profile}`}><span>{profile === 'universal' ? 'U' : 'A'}</span><div><strong>{profile === 'universal' ? 'Normal copy-paste Voiceover' : 'Advanced copy-paste Voiceover'}</strong><p>{profile === 'universal' ? 'Only the spoken Script remains. Punctuation and paragraph spacing guide the voice naturally.' : 'Professional pause and performance tags are inserted inside the narration. Nothing else is added.'}</p></div></div>
             </section>
 
-            {!scriptFinal ? <div className="voice-prerequisite"><span>!</span><div><strong>Final Script is not ready</strong><p>Return to Script and complete Recheck & Polish. This page will then receive the reviewed version.</p></div><a href="/studio/scripts" onClick={(e) => studioNavigate('/studio/scripts', e)}>Return to Script</a></div> : null}
+            {!scriptFinal ? <div className="voice-prerequisite"><span>!</span><div><strong>No Script has arrived yet</strong><p>Return to Script and write the Script first. This page will then receive it automatically.</p></div><a href="/studio/scripts" onClick={(e) => studioNavigate('/studio/scripts', e)}>Return to Script</a></div> : null}
 
             {error ? <p className="voice-message error" role="alert"><span>!</span>{error}</p> : null}
             {notice ? <p className="voice-message success" role="status"><span>✓</span>{notice}</p> : null}

@@ -1,7 +1,6 @@
 import {
   buildStagePrompt,
   channelSystemPrompt,
-  stageMaxTokens,
   type AutomationStage,
   type WorkflowContext,
 } from './prompts';
@@ -261,7 +260,9 @@ function extractOpenAI(payload: unknown): ProviderResult {
   return { output, sources: uniqueSources(sources), grounded: sources.length > 0, truncated };
 }
 
-async function generateOpenAI(key: string, model: string, stage: AutomationStage, prompt: string, maxTokens: number, webEnabled: boolean) {
+async function generateOpenAI(key: string, model: string, stage: AutomationStage, prompt: string, webEnabled: boolean) {
+  // No max_output_tokens cap is sent: each model writes up to its own full
+  // output capacity, and reasoning tokens no longer squeeze the visible text.
   const call = await providerFetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
@@ -269,7 +270,6 @@ async function generateOpenAI(key: string, model: string, stage: AutomationStage
       model,
       instructions: channelSystemPrompt,
       input: prompt,
-      max_output_tokens: maxTokens,
       store: false,
       ...(webEnabled ? {
         tools: [{ type: 'web_search' }],
@@ -302,23 +302,56 @@ function extractAnthropic(payload: unknown): ProviderResult {
   return { output, sources: uniqueSources(sources), grounded: sources.length > 0, truncated };
 }
 
-async function generateAnthropic(key: string, model: string, stage: AutomationStage, prompt: string, maxTokens: number, webEnabled: boolean) {
+// Anthropic requires an explicit max_tokens and rejects any value above the
+// model's own output limit. Ask for the highest current Claude output limit
+// and, when a model's true maximum is lower, retry once with the exact limit
+// the API names in its 400 response — so every model still writes to its full
+// native capability. Raise the ceiling as future Claude models grow past it.
+const ANTHROPIC_MAX_TOKENS_CEILING = 64000;
+
+function anthropicModelMaxTokens(message: string) {
+  const maximum = message.match(/max_tokens\s*:\s*\d+\s*>\s*(\d+)/i)?.[1];
+  const value = Number(maximum);
+  return Number.isInteger(value) && value >= 1000 && value < ANTHROPIC_MAX_TOKENS_CEILING ? value : undefined;
+}
+
+async function generateAnthropic(key: string, model: string, stage: AutomationStage, prompt: string, webEnabled: boolean) {
   const tools = webEnabled ? [{ type: 'web_search_20250305', name: 'web_search', max_uses: stage === 'research' ? 8 : 5 }] : undefined;
-  const baseBody = {
-    model,
-    max_tokens: maxTokens,
-    system: channelSystemPrompt,
-    messages: [{ role: 'user', content: prompt }],
-    ...(tools ? { tools } : {}),
-  };
   const headers = {
     'x-api-key': key,
     'anthropic-version': '2023-06-01',
     'Content-Type': 'application/json',
   };
-  let call = await providerFetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST', headers, body: JSON.stringify(baseBody),
+  const sendRequest = (maxTokens: number) => providerFetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      system: channelSystemPrompt,
+      messages: [{ role: 'user', content: prompt }],
+      ...(tools ? { tools } : {}),
+    }),
   }, 'Anthropic', providerRequestProfile(stage));
+  let acceptedTokens = ANTHROPIC_MAX_TOKENS_CEILING;
+  let call: ProviderFetchResult;
+  try {
+    call = await sendRequest(ANTHROPIC_MAX_TOKENS_CEILING);
+  } catch (ceilingError) {
+    const modelMaximum = ceilingError instanceof ProviderRequestError && ceilingError.status === 400
+      ? anthropicModelMaxTokens(ceilingError.message)
+      : undefined;
+    if (!modelMaximum) throw ceilingError;
+    acceptedTokens = modelMaximum;
+    call = await sendRequest(modelMaximum);
+  }
+  const baseBody = {
+    model,
+    max_tokens: acceptedTokens,
+    system: channelSystemPrompt,
+    messages: [{ role: 'user', content: prompt }],
+    ...(tools ? { tools } : {}),
+  };
   let payload = call.payload;
   let attempts = call.attempts;
   const first = asRecord(payload);
@@ -436,16 +469,15 @@ const visualResponseJsonSchema = {
     },
   },
 } as const;
-async function generateGemini(key: string, model: string, stage: AutomationStage, prompt: string, maxTokens: number, webEnabled: boolean) {
+async function generateGemini(key: string, model: string, stage: AutomationStage, prompt: string, webEnabled: boolean) {
   const normalizedModel = model.replace(/^models\//, '');
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(normalizedModel)}:generateContent`;
+  // No maxOutputTokens cap is sent: each model writes up to its own output
+  // limit, and thinking models are not forced to share a shrunken budget.
   const requestBody = (structuredJson: boolean) => JSON.stringify({
     systemInstruction: { parts: [{ text: channelSystemPrompt }] },
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: {
-      maxOutputTokens: maxTokens,
-      ...(structuredJson ? { responseMimeType: 'application/json', responseJsonSchema: visualResponseJsonSchema } : {}),
-    },
+    ...(structuredJson ? { generationConfig: { responseMimeType: 'application/json', responseJsonSchema: visualResponseJsonSchema } } : {}),
     ...(webEnabled ? { tools: [{ google_search: {} }] } : {}),
   });
   const headers = { 'x-goog-api-key': key, 'Content-Type': 'application/json' };
@@ -485,7 +517,7 @@ function createCustomTarget(baseUrl: string, completionPath: string) {
   return url.toString();
 }
 
-async function generateCustom(body: GenerateRequest, prompt: string, maxTokens: number) {
+async function generateCustom(body: GenerateRequest, prompt: string) {
   const baseUrl = body.baseUrl?.trim();
   if (!baseUrl) throw new Error('This custom provider has no saved base URL.');
   const endpoint = createCustomTarget(baseUrl, body.completionPath?.trim() || '/chat/completions');
@@ -495,6 +527,7 @@ async function generateCustom(body: GenerateRequest, prompt: string, maxTokens: 
   const authHeaders: Record<string, string> = body.authMethod === 'api-key'
     ? { [headerName]: key }
     : { Authorization: `Bearer ${key}` };
+  // No max_tokens cap is sent so a custom endpoint uses its model's own limit.
   const call = await providerFetch(endpoint, {
     method: 'POST',
     headers: { ...authHeaders, 'Content-Type': 'application/json' },
@@ -504,7 +537,6 @@ async function generateCustom(body: GenerateRequest, prompt: string, maxTokens: 
         { role: 'system', content: channelSystemPrompt },
         { role: 'user', content: prompt },
       ],
-      max_tokens: maxTokens,
     }),
   }, 'Custom provider', providerRequestProfile(body.stage ?? 'scripts'));
   const root = asRecord(call.payload);
@@ -556,12 +588,11 @@ export async function POST(request: Request) {
 
     const canUseWeb = usesWeb(stage) && provider !== 'custom' && body.webSearchEnabled !== false && !externalEvidence;
     const prompt = buildStagePrompt(stage, context, extraInstructions, canUseWeb);
-    const maxTokens = stageMaxTokens(stage, context);
     let result: ProviderResult;
-    if (provider === 'openai') result = await generateOpenAI(apiKey, model, stage, prompt, maxTokens, canUseWeb);
-    else if (provider === 'anthropic') result = await generateAnthropic(apiKey, model, stage, prompt, maxTokens, canUseWeb);
-    else if (provider === 'gemini') result = await generateGemini(apiKey, model, stage, prompt, maxTokens, canUseWeb);
-    else result = await generateCustom(body, prompt, maxTokens);
+    if (provider === 'openai') result = await generateOpenAI(apiKey, model, stage, prompt, canUseWeb);
+    else if (provider === 'anthropic') result = await generateAnthropic(apiKey, model, stage, prompt, canUseWeb);
+    else if (provider === 'gemini') result = await generateGemini(apiKey, model, stage, prompt, canUseWeb);
+    else result = await generateCustom(body, prompt);
 
     return Response.json({
       ...result,
